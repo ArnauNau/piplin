@@ -1,17 +1,13 @@
-// Pipeline stage names
 export type StageName = 'F' | 'D' | 'E' | 'M' | 'W';
 
-// Instruction types
 export type InstructionType = 'alu' | 'load' | 'store' | 'branch' | 'nop';
 
-// ALU operations (for determining latency)
 export type AluOp = 'add' | 'sub' | 'mul' | 'and' | 'or' | 'xor' | 'slt';
 
-// Parsed instruction
 export interface Instruction {
 	raw: string;
-	index: number; // position in program
-	opcode: string; // ADD, SUB, LW, etc.
+	index: number;
+	opcode: string;
 	type: InstructionType;
 	rd?: string; // destination register
 	rs1?: string; // source register 1
@@ -22,20 +18,17 @@ export interface Instruction {
 	label?: string; // label defined at this instruction
 }
 
-// What's happening in a cycle for an instruction
 export interface CycleEntry {
 	stage: StageName | 'stall' | 'bubble';
 	cycleInStage?: number; // for multi-cycle stages: which cycle (1, 2, 3...)
 	totalCycles?: number; // for multi-cycle stages: total cycles in this stage
 	hazardType?: HazardType;
 	forwardingFrom?: ForwardingInfo[];
-	flushed?: boolean; // true if this was flushed due to misprediction
+	flushed?: boolean; // true if flushed due to misprediction
 }
 
-// Hazard types
 export type HazardType = 'raw' | 'structural' | 'control';
 
-// Hazard information for display
 export interface HazardInfo {
 	type: HazardType;
 	cycle: number;
@@ -45,7 +38,6 @@ export interface HazardInfo {
 	register?: string; // register involved in RAW hazard
 }
 
-// Forwarding path info
 export interface ForwardingInfo {
 	fromInstruction: number;
 	fromStage: 'E' | 'M';
@@ -54,7 +46,6 @@ export interface ForwardingInfo {
 	value: number;
 }
 
-// Branch prediction info
 export interface BranchPrediction {
 	instructionIndex: number;
 	predicted: boolean; // true = taken, false = not taken
@@ -63,15 +54,18 @@ export interface BranchPrediction {
 	flushCycles: number; // cycles lost due to misprediction
 }
 
-// Register file: x0-x31
 export type RegisterFile = Record<string, number>;
 
-// Memory: address -> value
 export type Memory = Map<number, number>;
 
-// Simulation result
+export interface TraceEntry {
+	instruction: Instruction;
+	timeline: CycleEntry[];
+	label?: string;
+}
+
 export interface SimulationResult {
-	timeline: CycleEntry[][]; // [instructionIdx][cycle]
+	trace: TraceEntry[];
 	totalCycles: number;
 	hazards: HazardInfo[];
 	predictions: BranchPrediction[];
@@ -80,21 +74,18 @@ export interface SimulationResult {
 	finalMemory: Memory;
 }
 
-// Branch predictor types
 export type BranchPredictorType = 'none' | '1bit' | '2bit';
 
-// Forwarding configuration per path
 export interface ForwardingConfig {
 	exToEx: boolean; // EX→EX: forward ALU result to next instruction
 	memToEx: boolean; // MEM→EX: forward from MEM stage to EX
 }
 
-// Configuration
 export interface Config {
 	latencies: {
 		alu: number; // default ALU latency (add, sub, etc.)
-		mul: number; // multiply latency
-		mem: number; // memory access latency
+		mul: number;
+		mem: number;
 	};
 	forwarding: ForwardingConfig;
 	branchPredictor: BranchPredictorType;
@@ -103,7 +94,6 @@ export interface Config {
 	initialMemory: Memory;
 }
 
-// Default configuration
 export function defaultConfig(): Config {
 	return {
 		latencies: {
@@ -122,7 +112,6 @@ export function defaultConfig(): Config {
 	};
 }
 
-// Create default register file ($0-$31, $0 hardwired to 0)
 export function createDefaultRegisters(): RegisterFile {
 	const regs: RegisterFile = {};
 	for (let i = 0; i < 32; i++) {
@@ -131,10 +120,9 @@ export function createDefaultRegisters(): RegisterFile {
 	return regs;
 }
 
-// Parse result with potential errors
 export interface ParseResult {
 	instructions: Instruction[];
-	labels: Map<string, number>; // label -> instruction index
+	labels: Map<string, number>;
 	errors: ParseError[];
 }
 

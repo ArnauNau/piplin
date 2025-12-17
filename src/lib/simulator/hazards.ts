@@ -1,4 +1,4 @@
-import type { Instruction, HazardType } from '../types';
+import type { Instruction, HazardInfo, HazardType } from '../types';
 
 // Get source registers for an instruction
 export function getSourceRegisters(instr: Instruction): string[] {

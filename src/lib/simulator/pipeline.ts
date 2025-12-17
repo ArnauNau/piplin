@@ -8,7 +8,8 @@ import type {
 	RegisterFile,
 	Memory,
 	ForwardingInfo,
-	BranchPrediction
+	BranchPrediction,
+	TraceEntry
 } from '../types';
 import { createDefaultRegisters } from '../types';
 import {
@@ -23,7 +24,6 @@ import {
 import { getSourceRegisters, getDestRegister } from './hazards';
 import { createBranchPredictor, type BranchPredictor } from './branchPredictor';
 
-// Pipeline stage representation
 interface PipelineStage {
 	instr: Instruction | null;
 	cycleInStage: number;
@@ -33,13 +33,10 @@ interface PipelineStage {
 	flushed: boolean;
 }
 
-// In-flight instruction tracking
-interface InFlightInstr {
-	instr: Instruction;
-	fetchCycle: number;
-	stages: Map<StageName, { start: number; end: number }>;
-	flushed: boolean;
-	computedValue?: number;
+//tracking for dynamic tracing
+interface ActiveStage {
+	traceIndex: number; //index in the trace array
+	stage: PipelineStage;
 }
 
 export function simulatePipeline(
@@ -49,7 +46,7 @@ export function simulatePipeline(
 ): SimulationResult {
 	if (instructions.length === 0) {
 		return {
-			timeline: [],
+			trace: [],
 			totalCycles: 0,
 			hazards: [],
 			predictions: [],
@@ -59,7 +56,6 @@ export function simulatePipeline(
 		};
 	}
 
-	// Initialize state
 	const regs: RegisterFile = cloneRegisters(config.initialRegisters ?? createDefaultRegisters());
 	const mem: Memory = cloneMemory(config.initialMemory ?? new Map());
 	const predictor: BranchPredictor = createBranchPredictor(
@@ -67,23 +63,16 @@ export function simulatePipeline(
 		config.predictorInitial
 	);
 
-	// Timeline: for each instruction, what happens at each cycle
-	const timeline: CycleEntry[][] = instructions.map(() => []);
+	//dynamic execution trace
+	const trace: TraceEntry[] = [];
 	const hazards: HazardInfo[] = [];
 	const predictions: BranchPrediction[] = [];
 
-	// Track instructions in pipeline
-	const _inFlight: InFlightInstr[] = [];
-
-	// Current state
-	let pc = 0; // Program counter (instruction index)
+	//current state
+	let pc = 0;
 	let cycle = 1;
-	const _stallCycles = 0;
-	const _flushUntilCycle = 0;
-	let completed = 0;
 
-	// Pipeline registers (what's in each stage)
-	const stages: Record<StageName, PipelineStage | null> = {
+	const stages: Record<StageName, ActiveStage | null> = {
 		F: null,
 		D: null,
 		E: null,
@@ -91,213 +80,269 @@ export function simulatePipeline(
 		W: null
 	};
 
-	// Results available for forwarding (from EX and MEM stages)
+	//results available for forwarding (from EX and MEM stages); maps register name to value and source info
 	const forwardableResults: Map<
 		string,
 		{ value: number; fromInstr: number; fromStage: 'E' | 'M' }
 	> = new Map();
 
-	// Maximum cycles to prevent infinite loops
-	const maxCycles = instructions.length * 50 + 100;
+	//to prevent infinite loops (no static analysis for now)
+	const MAX_CYCLES = 1000;
 
-	while (completed < instructions.length && cycle <= maxCycles) {
-		// Clear forwardable results from last cycle
+	//initialize first instruction in Fetch
+	if (instructions.length > 0) {
+		const label = Array.from(labels.entries()).find(([_, idx]) => idx === 0)?.[0];
+
+		trace.push({
+			instruction: instructions[0],
+			timeline: [],
+			label: label ? `label ${label}` : undefined
+		});
+
+		stages.F = {
+			traceIndex: 0,
+			stage: {
+				instr: instructions[0],
+				cycleInStage: 1,
+				totalCyclesInStage: 1,
+				forwardingUsed: [],
+				flushed: false
+			}
+		};
+		pc = 1;
+	}
+
+	while (cycle <= MAX_CYCLES) {
+		//check termination
+		const isPipelineEmpty = Object.values(stages).every((stage) => stage === null);
+		if (isPipelineEmpty && pc >= instructions.length && cycle > 1) {
+			break;
+		}
+
+		//clear forwards from last cycle
 		forwardableResults.clear();
 
-		// === WRITEBACK STAGE ===
-		if (stages.W?.instr && !stages.W.flushed) {
-			const instr = stages.W.instr;
-			// Write result to register file
-			if (instr.type === 'alu' && instr.rd) {
-				setRegValue(regs, instr.rd, stages.W.computedValue ?? 0);
-			} else if (instr.type === 'load' && instr.rd) {
-				setRegValue(regs, instr.rd, stages.W.computedValue ?? 0);
-			}
-			completed++;
-		}
-
-		// === MEMORY STAGE ===
-		let memResult: number | undefined;
-		if (stages.M?.instr && !stages.M.flushed) {
-			const instr = stages.M.instr;
-			const cycleInStage = stages.M.cycleInStage;
-			const totalCycles = stages.M.totalCyclesInStage;
-
-			if (instr.type === 'load' && cycleInStage === totalCycles) {
-				memResult = executeLoad(instr, regs, mem);
-				// Add to forwardable results (MEM→EX path)
-				if (instr.rd && config.forwarding.memToEx) {
-					forwardableResults.set(instr.rd, {
-						value: memResult,
-						fromInstr: instr.index,
-						fromStage: 'M'
-					});
+		//#region WRITEBACK STAGE
+		if (stages.W && !stages.W.stage.flushed) {
+			const { stage } = stages.W;
+			const { instr } = stage;
+			//write result to register file
+			if (instr && instr.rd && instr.rd !== '$0') {
+				if (instr.type == 'alu' || instr.type == 'load') {
+					setRegValue(regs, instr.rd, stage.computedValue ?? 0);
 				}
-			} else if (instr.type === 'store' && cycleInStage === totalCycles) {
-				executeStore(instr, regs, mem);
-			} else if (instr.type === 'alu' && instr.rd && config.forwarding.memToEx) {
-				// ALU result can be forwarded from M stage too (MEM→EX path)
-				forwardableResults.set(instr.rd, {
-					value: stages.M.computedValue ?? 0,
-					fromInstr: instr.index,
-					fromStage: 'M'
-				});
 			}
 		}
 
-		// === EXECUTE STAGE ===
+		//#region MEMORY STAGE
+		let memResult: number | undefined;
+
+		if (stages.M && !stages.M.stage.flushed) {
+			const { stage, traceIndex } = stages.M;
+			const { instr } = stage;
+
+			if (instr) {
+				//execute at end of MEM stage
+				if (stage.cycleInStage === stage.totalCyclesInStage) {
+					if (instr.type === 'load') {
+						memResult = executeLoad(instr, regs, mem);
+						if (instr.rd && config.forwarding.memToEx) {
+							forwardableResults.set(instr.rd, {
+								value: memResult,
+								fromInstr: traceIndex,
+								fromStage: 'M'
+							});
+						}
+					} else if (instr.type === 'store') {
+						executeStore(instr, regs, mem);
+					} else if (instr.type === 'alu' && instr.rd && config.forwarding.memToEx) {
+						forwardableResults.set(instr.rd, {
+							value: stage.computedValue ?? 0,
+							fromInstr: traceIndex,
+							fromStage: 'M'
+						});
+					}
+				} else {
+					//if MEM latency > 1, can we forward early? usually only at end, but for ALU in MEM stage, value is ready
+					if (instr.type === 'alu' && instr.rd && config.forwarding.memToEx) {
+						forwardableResults.set(instr.rd, {
+							value: stage.computedValue ?? 0,
+							fromInstr: traceIndex,
+							fromStage: 'M'
+						});
+					}
+				}
+			}
+		}
+
+		//#region EXECUTE STAGE
 		let exeResult: number | undefined;
 		let branchTaken = false;
 		let branchTarget = -1;
 
-		if (stages.E?.instr && !stages.E.flushed) {
-			const instr = stages.E.instr;
-			const cycleInStage = stages.E.cycleInStage;
-			const totalCycles = stages.E.totalCyclesInStage;
+		if (stages.E && !stages.E.stage.flushed) {
+			const { stage, traceIndex } = stages.E;
+			const { instr } = stage;
 
-			// On last cycle of EX, compute result
-			if (cycleInStage === totalCycles) {
-				// Get effective register values (with forwarding)
-				const effectiveRegs = { ...regs };
-				for (const fwd of stages.E.forwardingUsed) {
-					if (fwd.register !== '$0') {
-						effectiveRegs[fwd.register] = fwd.value;
-					}
-				}
-
-				if (instr.type === 'alu') {
-					exeResult = executeAlu(instr, effectiveRegs);
-					// Add to forwardable results (EX→EX path)
-					if (instr.rd && config.forwarding.exToEx) {
-						forwardableResults.set(instr.rd, {
-							value: exeResult,
-							fromInstr: instr.index,
-							fromStage: 'E'
-						});
-					}
-				} else if (instr.type === 'branch') {
-					branchTaken = evaluateBranch(instr, effectiveRegs);
-					if (branchTaken && instr.targetLabel) {
-						branchTarget = labels.get(instr.targetLabel) ?? -1;
+			if (instr) {
+				// Logic execution at end of stage
+				if (stage.cycleInStage === stage.totalCyclesInStage) {
+					const effectiveRegs = { ...regs };
+					for (const fwd of stage.forwardingUsed) {
+						if (fwd.register !== '$0') effectiveRegs[fwd.register] = fwd.value;
 					}
 
-					// Check prediction
-					const predicted = predictor.predict(instr.index);
-					predictor.update(instr.index, branchTaken);
-
-					const prediction: BranchPrediction = {
-						instructionIndex: instr.index,
-						predicted,
-						actual: branchTaken,
-						correct: predicted === branchTaken,
-						flushCycles: 0
-					};
-
-					// If mispredicted, need to flush
-					if (predicted !== branchTaken) {
-						// Flush instructions in F and D stages
-						if (stages.F?.instr) {
-							stages.F.flushed = true;
-							prediction.flushCycles++;
+					if (instr.type === 'alu') {
+						exeResult = executeAlu(instr, effectiveRegs);
+						if (instr.rd && config.forwarding.exToEx) {
+							forwardableResults.set(instr.rd, {
+								value: exeResult,
+								fromInstr: traceIndex,
+								fromStage: 'E'
+							});
 						}
-						if (stages.D?.instr) {
-							stages.D.flushed = true;
-							prediction.flushCycles++;
+					} else if (instr.type === 'branch') {
+						branchTaken = evaluateBranch(instr, effectiveRegs);
+						if (branchTaken && instr.targetLabel) {
+							branchTarget = labels.get(instr.targetLabel) ?? -1;
 						}
 
-						// Update PC based on actual outcome
-						if (branchTaken && branchTarget >= 0) {
-							pc = branchTarget;
-						} else {
-							// Not taken - PC should be instruction after branch
-							pc = instr.index + 1;
-						}
-					}
+						const predicted = predictor.predict(instr.index);
+						predictor.update(instr.index, branchTaken);
 
-					predictions.push(prediction);
-				} else if (instr.type === 'load' || instr.type === 'store') {
-					// Calculate address for load/store
-					const effectiveRegs2 = { ...regs };
-					for (const fwd of stages.E.forwardingUsed) {
-						if (fwd.register !== 'x0') {
-							effectiveRegs2[fwd.register] = fwd.value;
+						const prediction: BranchPrediction = {
+							instructionIndex: traceIndex,
+							predicted,
+							actual: branchTaken,
+							correct: predicted === branchTaken,
+							flushCycles: 0
+						};
+
+						if (predicted !== branchTaken) {
+							//flush earlier stages
+							//F, D are 'younger' than E
+							if (stages.F) {
+								stages.F.stage.flushed = true;
+								prediction.flushCycles++;
+							}
+							if (stages.D) {
+								stages.D.stage.flushed = true;
+								prediction.flushCycles++;
+							}
+
+							//correct PC
+							pc = branchTaken && branchTarget >= 0 ? branchTarget : instr.index + 1;
 						}
+
+						predictions.push(prediction);
+					} else if (instr.type === 'load' || instr.type === 'store') {
+						const effectiveRegs2 = { ...regs };
+
+						for (const fwd of stage.forwardingUsed) {
+							if (fwd.register !== '$0') effectiveRegs2[fwd.register] = fwd.value;
+						}
+
+						const addr = (effectiveRegs2[instr.rs1 ?? '$0'] ?? 0) + (instr.imm ?? 0);
+						exeResult = addr;
 					}
-					const addr = (effectiveRegs2[instr.rs1 ?? 'x0'] ?? 0) + (instr.imm ?? 0);
-					exeResult = addr;
 				}
 			}
 		}
-
-		// === DECODE STAGE - Check for hazards ===
+		//#endregion
+		//#region DECODE STAGE
 		let decodeStalled = false;
 		let hazardInfo: HazardInfo | undefined;
 
-		if (stages.D?.instr && !stages.D.flushed) {
-			const instr = stages.D.instr;
-			const sources = getSourceRegisters(instr);
+		if (stages.D && !stages.D.stage.flushed) {
+			const { stage, traceIndex } = stages.D;
+			const { instr } = stage;
 
-			// Check for hazards with instructions in E and M stages
-			for (const source of sources) {
-				// Check E stage
-				if (stages.E?.instr && !stages.E.flushed) {
-					const exDest = getDestRegister(stages.E.instr);
-					if (exDest === source) {
-						const remainingExCycles = stages.E.totalCyclesInStage - stages.E.cycleInStage;
-						if (remainingExCycles > 0) {
-							// Need to stall
-							decodeStalled = true;
-							hazardInfo = {
-								type: 'raw',
-								cycle,
-								instructionIndex: instr.index,
-								description: `RAW hazard: ${source} from I${stages.E.instr.index + 1}`,
-								dependsOn: stages.E.instr.index,
-								register: source
-							};
-							break;
-						} else if (stages.E.instr.type === 'load' && !config.forwarding.memToEx) {
-							// Load-use hazard without MEM→EX forwarding
-							decodeStalled = true;
-							hazardInfo = {
-								type: 'raw',
-								cycle,
-								instructionIndex: instr.index,
-								description: `Load-use hazard: ${source} from I${stages.E.instr.index + 1}`,
-								dependsOn: stages.E.instr.index,
-								register: source
-							};
-							break;
-						} else if (stages.E.instr.type === 'load' && config.forwarding.memToEx) {
-							// Load-use hazard - must stall 1 cycle even with MEM→EX forwarding
-							decodeStalled = true;
-							hazardInfo = {
-								type: 'raw',
-								cycle,
-								instructionIndex: instr.index,
-								description: `Load-use hazard: ${source} from I${stages.E.instr.index + 1} (1 cycle stall)`,
-								dependsOn: stages.E.instr.index,
-								register: source
-							};
-							break;
+			if (instr) {
+				const sources = getSourceRegisters(instr);
+				for (const source of sources) {
+					// Check E Hazard
+					if (stages.E && !stages.E.stage.flushed && stages.E.stage.instr) {
+						const exDest = getDestRegister(stages.E.stage.instr);
+						if (exDest === source) {
+							const isLoad = stages.E.stage.instr.type === 'load';
+
+							//if ID depends on instruction in EX:
+
+							//case 1: instruction in EX is a LOAD.
+							//result is NOT ready until end of MEM.
+							//must stall D->E transition regardless of forwarding settings.
+							if (isLoad) {
+								decodeStalled = true;
+								hazardInfo = {
+									type: 'raw',
+									cycle,
+									instructionIndex: traceIndex,
+									description: `Load-use hazard: ${source}`,
+									dependsOn: stages.E.traceIndex,
+									register: source
+								};
+								break;
+							}
+
+							//case 2: instruction in EX is ALU.
+							//result is computed in EX.
+							//if EX->EX forwarding is enabled, can proceed.
+							//if disabled, must stall.
+							if (!config.forwarding.exToEx) {
+								decodeStalled = true;
+								hazardInfo = {
+									type: 'raw',
+									cycle,
+									instructionIndex: traceIndex,
+									description: `RAW hazard: ${source}`,
+									dependsOn: stages.E.traceIndex,
+									register: source
+								};
+								break;
+							}
 						}
 					}
-				}
 
-				// Check M stage (only matters without MEM→EX forwarding)
-				if (!config.forwarding.memToEx && stages.M?.instr && !stages.M.flushed) {
-					const memDest = getDestRegister(stages.M.instr);
-					if (memDest === source) {
-						decodeStalled = true;
-						hazardInfo = {
-							type: 'raw',
-							cycle,
-							instructionIndex: instr.index,
-							description: `RAW hazard: ${source} from I${stages.M.instr.index + 1}`,
-							dependsOn: stages.M.instr.index,
-							register: source
-						};
-						break;
+					//check M hazard
+					if (stages.M && !stages.M.stage.flushed && stages.M.stage.instr) {
+						const memDest = getDestRegister(stages.M.stage.instr);
+						if (memDest === source) {
+							const remaining =
+								stages.M.stage.totalCyclesInStage - stages.M.stage.cycleInStage;
+
+							//if M stage is not finished (multi-cycle latency), must stall.
+							if (remaining > 0) {
+								decodeStalled = true;
+								hazardInfo = {
+									type: 'raw',
+									cycle,
+									instructionIndex: traceIndex,
+									description: `RAW hazard: ${source}`,
+									dependsOn: stages.M.traceIndex,
+									register: source
+								};
+								break;
+							}
+
+							// If M stage IS finished (remaining == 0):
+							// If forwarding (memToEx) is disabled, we cannot bypass from M.
+							// We must wait for the instruction to reach Writeback (next cycle)
+							// to ensure registers are updated before D reads them (or D->E happens).
+							if (!config.forwarding.memToEx) {
+								decodeStalled = true;
+								hazardInfo = {
+									type: 'raw',
+									cycle,
+									instructionIndex: traceIndex,
+									description: `RAW hazard: ${source}`,
+									dependsOn: stages.M.traceIndex,
+									register: source
+								};
+								break;
+							}
+
+							//if forwarding enabled, proceed.
+						}
 					}
 				}
 			}
@@ -307,152 +352,183 @@ export function simulatePipeline(
 			}
 		}
 
-		// === UPDATE TIMELINE ===
-		for (const stage of ['F', 'D', 'E', 'M', 'W'] as StageName[]) {
-			const pStage = stages[stage];
-			if (pStage?.instr) {
-				const entry: CycleEntry = {
-					stage: pStage.flushed ? 'bubble' : stage,
-					flushed: pStage.flushed
-				};
+		//#region UPDATE TIMELINE
+		const addCycleToTrace = (tIdx: number, entry: CycleEntry) => {
+			while (trace[tIdx].timeline.length < cycle - 1) {
+				trace[tIdx].timeline.push({ stage: 'bubble' });
+			}
+			trace[tIdx].timeline[cycle - 1] = entry;
+		};
 
-				if (pStage.totalCyclesInStage > 1) {
-					entry.cycleInStage = pStage.cycleInStage;
-					entry.totalCycles = pStage.totalCyclesInStage;
-				}
+		if (decodeStalled && stages.D) {
+			addCycleToTrace(stages.D.traceIndex, { stage: 'stall', hazardType: 'raw' });
+		}
 
-				if (pStage.forwardingUsed.length > 0) {
-					entry.forwardingFrom = pStage.forwardingUsed;
+		for (const sName of ['F', 'D', 'E', 'M', 'W'] as StageName[]) {
+			const active = stages[sName];
+			if (active) {
+				if (sName === 'D' && decodeStalled) {
+					// Already handled stall entry above
+				} else if (sName === 'F' && decodeStalled) {
+					// F stalled
+					addCycleToTrace(active.traceIndex, {
+						stage: 'stall',
+						hazardType: 'structural'
+					});
+				} else {
+					// Normal execution
+					addCycleToTrace(active.traceIndex, {
+						stage: sName,
+						flushed: active.stage.flushed,
+						cycleInStage:
+							active.stage.totalCyclesInStage > 1
+								? active.stage.cycleInStage
+								: undefined,
+						totalCycles:
+							active.stage.totalCyclesInStage > 1
+								? active.stage.totalCyclesInStage
+								: undefined,
+						forwardingFrom:
+							active.stage.forwardingUsed.length > 0
+								? active.stage.forwardingUsed
+								: undefined
+					});
 				}
-
-				// Pad timeline if needed
-				while (timeline[pStage.instr.index].length < cycle - 1) {
-					timeline[pStage.instr.index].push({ stage: 'bubble' });
-				}
-				timeline[pStage.instr.index][cycle - 1] = entry;
 			}
 		}
 
-		// Handle stall in decode
-		if (decodeStalled && stages.D?.instr) {
-			// Record stall
-			const stallEntry: CycleEntry = {
-				stage: 'stall',
-				hazardType: 'raw'
-			};
-			// Don't advance D to E, don't fetch new instruction
-			while (timeline[stages.D.instr.index].length < cycle) {
-				timeline[stages.D.instr.index].push(stallEntry);
-			}
-		}
-
-		// === ADVANCE PIPELINE ===
-		// W stage completes
+		//#region ADVANCE PIPELINE
+		// W stage complete
 		stages.W = null;
 
 		// M -> W
-		if (stages.M?.instr) {
-			const mStage = stages.M;
-			const mInstr = mStage.instr!;
-			if (mStage.cycleInStage >= mStage.totalCyclesInStage) {
+		if (stages.M) {
+			if (stages.M.stage.cycleInStage >= stages.M.stage.totalCyclesInStage) {
 				stages.W = {
-					instr: mInstr,
-					cycleInStage: 1,
-					totalCyclesInStage: 1,
-					computedValue: mInstr.type === 'load' ? memResult : mStage.computedValue,
-					forwardingUsed: [],
-					flushed: mStage.flushed
+					traceIndex: stages.M.traceIndex,
+					stage: {
+						...stages.M.stage,
+						cycleInStage: 1,
+						totalCyclesInStage: 1,
+						computedValue:
+							stages.M.stage.instr?.type === 'load'
+								? memResult
+								: stages.M.stage.computedValue
+					}
 				};
 				stages.M = null;
 			} else {
-				stages.M.cycleInStage++;
+				stages.M.stage.cycleInStage++;
 			}
 		}
 
 		// E -> M
-		if (stages.E?.instr) {
-			const eStage = stages.E;
-			const eInstr = eStage.instr!;
-			if (eStage.cycleInStage >= eStage.totalCyclesInStage) {
+		if (stages.E) {
+			if (stages.E.stage.cycleInStage >= stages.E.stage.totalCyclesInStage) {
 				const memCycles =
-					eInstr.type === 'load' || eInstr.type === 'store' ? config.latencies.mem : 1;
+					stages.E.stage.instr?.type === 'load' || stages.E.stage.instr?.type === 'store'
+						? config.latencies.mem
+						: 1;
+
 				stages.M = {
-					instr: eInstr,
-					cycleInStage: 1,
-					totalCyclesInStage: memCycles,
-					computedValue: exeResult,
-					forwardingUsed: [],
-					flushed: eStage.flushed
+					traceIndex: stages.E.traceIndex,
+					stage: {
+						...stages.E.stage,
+						cycleInStage: 1,
+						totalCyclesInStage: memCycles,
+						computedValue: exeResult,
+						forwardingUsed: []
+					}
 				};
 				stages.E = null;
 			} else {
-				stages.E.cycleInStage++;
+				stages.E.stage.cycleInStage++;
 			}
 		}
 
 		// D -> E (if not stalled)
-		if (!decodeStalled && stages.D?.instr) {
-			const dStage = stages.D;
-			const dInstr = dStage.instr!;
+		if (!decodeStalled && stages.D) {
+			const instr = stages.D.stage.instr;
 
-			// Gather forwarding based on enabled paths
+			//calculate forwarding
 			const fwdUsed: ForwardingInfo[] = [];
-			const sources = getSourceRegisters(dInstr);
-			for (const src of sources) {
-				const fwd = forwardableResults.get(src);
-				if (fwd) {
-					// Check if the relevant forwarding path is enabled
-					const canForward =
-						(fwd.fromStage === 'E' && config.forwarding.exToEx) ||
-						(fwd.fromStage === 'M' && config.forwarding.memToEx);
-					if (canForward) {
-						fwdUsed.push({
-							fromInstruction: fwd.fromInstr,
-							fromStage: fwd.fromStage,
-							toStage: 'E',
-							register: src,
-							value: fwd.value
-						});
+			if (instr) {
+				for (const src of getSourceRegisters(instr)) {
+					const fwd = forwardableResults.get(src);
+					if (fwd) {
+						const canForward =
+							(fwd.fromStage === 'E' && config.forwarding.exToEx) ||
+							(fwd.fromStage === 'M' && config.forwarding.memToEx);
+						if (canForward) {
+							fwdUsed.push({
+								fromInstruction: fwd.fromInstr,
+								fromStage: fwd.fromStage,
+								toStage: 'E',
+								register: src,
+								value: fwd.value
+							});
+						}
 					}
 				}
 			}
 
-			// Determine EX latency
 			let exeCycles = config.latencies.alu;
-			if (dInstr.aluOp === 'mul') {
+			if (instr?.aluOp === 'mul') {
 				exeCycles = config.latencies.mul;
 			}
 
 			stages.E = {
-				instr: dInstr,
-				cycleInStage: 1,
-				totalCyclesInStage: exeCycles,
-				forwardingUsed: fwdUsed,
-				flushed: dStage.flushed
+				traceIndex: stages.D.traceIndex,
+				stage: {
+					...stages.D.stage,
+					cycleInStage: 1,
+					totalCyclesInStage: exeCycles,
+					forwardingUsed: fwdUsed
+				}
 			};
 			stages.D = null;
 		}
 
-		// F -> D (if not stalled)
-		if (!decodeStalled && stages.F?.instr) {
+		// F -> D
+		if (!decodeStalled && stages.F) {
 			stages.D = {
-				instr: stages.F.instr,
-				cycleInStage: 1,
-				totalCyclesInStage: 1,
-				forwardingUsed: [],
-				flushed: stages.F.flushed
+				traceIndex: stages.F.traceIndex,
+				stage: {
+					...stages.F.stage,
+					cycleInStage: 1,
+					totalCyclesInStage: 1,
+					forwardingUsed: []
+				}
 			};
 			stages.F = null;
 		}
 
-		// Fetch new instruction (if not stalled and PC valid)
+		//fetch new instruction (if not stalled and PC valid)
 		if (!decodeStalled && !stages.F && pc < instructions.length) {
+			const label = Array.from(labels.entries()).find(([_, idx]) => idx === pc)?.[0];
+
+			const newEntry: TraceEntry = {
+				instruction: instructions[pc],
+				timeline: [],
+				label: label ? `${label}:` : undefined
+			};
+			trace.push(newEntry);
+			const newTraceIndex = trace.length - 1;
+
+			//backfill stalls for missed cycles
+			while (trace[newTraceIndex].timeline.length < cycle) {
+				trace[newTraceIndex].timeline.push({ stage: 'bubble' });
+			}
+
 			stages.F = {
-				instr: instructions[pc],
-				cycleInStage: 1,
-				totalCyclesInStage: 1,
-				forwardingUsed: [],
-				flushed: false
+				traceIndex: newTraceIndex,
+				stage: {
+					instr: instructions[pc],
+					cycleInStage: 1,
+					totalCyclesInStage: 1,
+					forwardingUsed: [],
+					flushed: false
+				}
 			};
 			pc++;
 		}
@@ -460,17 +536,17 @@ export function simulatePipeline(
 		cycle++;
 	}
 
-	// Pad timelines to equal length
-	const maxLen = Math.max(...timeline.map((t) => t.length));
-	for (const t of timeline) {
-		while (t.length < maxLen) {
-			t.push({ stage: 'bubble' });
+	//final padding (TODO: this will change when repeating instructions are draw on same row)
+	const totalCycles = cycle - 1;
+	for (const t of trace) {
+		while (t.timeline.length < totalCycles) {
+			t.timeline.push({ stage: 'bubble' });
 		}
 	}
 
 	return {
-		timeline,
-		totalCycles: cycle - 1,
+		trace,
+		totalCycles,
 		hazards,
 		predictions,
 		mispredictions: predictions.filter((p) => !p.correct).length,
