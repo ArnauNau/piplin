@@ -3,8 +3,34 @@
 	import ConfigSidebar from '../components/ConfigSidebar.svelte';
 	import PipelineGrid from '../components/PipelineGrid.svelte';
 	import StatusBar from '../components/StatusBar.svelte';
+	import DocumentationPanel from '../components/DocumentationPanel.svelte';
+	import type { CycleEntry } from '$lib/types';
 
 	let panelOpen = $state(false);
+	let docsOpen = $state(false);
+	let selectedInstruction = $state<string | null>(null);
+
+	let selectedStage = $state<{
+		stage: string;
+		cycle: number;
+		entry: CycleEntry;
+	} | null>(null);
+
+	function handleInstructionSelect(op: string) {
+		selectedInstruction = op;
+		selectedStage = null;
+		if (!docsOpen) {
+			docsOpen = true;
+		}
+	}
+
+	function handleStageSelect(stage: string, cycle: number, entry: CycleEntry) {
+		selectedStage = { stage, cycle, entry };
+		selectedInstruction = null;
+		if (!docsOpen) {
+			docsOpen = true;
+		}
+	}
 </script>
 
 <svelte:head>
@@ -38,8 +64,26 @@
 		</div>
 
 		<!-- Pipeline visualization -->
-		<div class="right-panel">
-			<PipelineGrid />
+		<div class="center-panel">
+			<PipelineGrid onInspect={handleInstructionSelect} onInspectStage={handleStageSelect} />
+		</div>
+
+		<!-- Collapsible right panel (Docs) -->
+		<div class="right-panel" class:open={docsOpen}>
+			<button
+				class="panel-toggle right"
+				onclick={() => (docsOpen = !docsOpen)}
+				aria-label="Toggle docs panel"
+			>
+				<span class="toggle-icon">{docsOpen ? '◀' : '▶'}</span>
+				<span class="toggle-text">{docsOpen ? 'Hide' : 'Docs'}</span>
+			</button>
+
+			{#if docsOpen}
+				<div class="panel-content">
+					<DocumentationPanel bind:selectedOp={selectedInstruction} bind:selectedStage />
+				</div>
+			{/if}
 		</div>
 	</div>
 
@@ -65,9 +109,23 @@
 		flex-shrink: 0;
 		background: var(--bg-secondary);
 		border-right: 1px solid var(--border-color);
+		transition: width 0.3s ease;
 	}
 
 	.left-panel.open {
+		width: 320px;
+	}
+
+	.right-panel {
+		display: flex;
+		flex-direction: row-reverse;
+		flex-shrink: 0;
+		background: var(--bg-secondary);
+		border-left: 1px solid var(--border-color);
+		transition: width 0.3s ease;
+	}
+
+	.right-panel.open {
 		width: 320px;
 	}
 
@@ -84,11 +142,26 @@
 		cursor: pointer;
 		writing-mode: vertical-rl;
 		text-orientation: mixed;
-		transition: color 0.15s ease;
+		transition: all 0.15s ease;
+		align-self: stretch;
 	}
 
 	.panel-toggle:hover {
 		color: var(--text-primary);
+		background: var(--bg-tertiary);
+	}
+
+	.left-panel .panel-toggle {
+		border-right: 1px solid transparent;
+	}
+
+	.right-panel .panel-toggle {
+		border-left: 1px solid transparent;
+	}
+
+	/* Rotate the right toggle text */
+	.panel-toggle.right {
+		transform: rotate(180deg);
 	}
 
 	.toggle-icon {
@@ -108,6 +181,7 @@
 		flex-direction: column;
 		min-height: 0;
 		overflow: hidden;
+		width: 320px;
 	}
 
 	.editor-wrapper {
@@ -122,7 +196,7 @@
 		overflow-y: auto;
 	}
 
-	.right-panel {
+	.center-panel {
 		flex: 1;
 		min-width: 0;
 	}
