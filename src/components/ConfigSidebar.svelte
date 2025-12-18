@@ -127,7 +127,10 @@
 			{#if appState.config.branchPredictor !== 'none'}
 				<label>
 					<span>Initial</span>
-					<select value={appState.config.predictorInitial} onchange={updatePredictorInitial}>
+					<select
+						value={appState.config.predictorInitial}
+						onchange={updatePredictorInitial}
+					>
 						<option value="not-taken">NT</option>
 						<option value="taken">T</option>
 					</select>

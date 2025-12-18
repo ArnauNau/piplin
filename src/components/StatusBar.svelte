@@ -5,11 +5,11 @@
 
 	// Stage legend items
 	const stages = [
-		{ name: 'F', color: 'var(--stage-fetch)' },
-		{ name: 'D', color: 'var(--stage-decode)' },
-		{ name: 'E', color: 'var(--stage-execute)' },
-		{ name: 'M', color: 'var(--stage-memory)' },
-		{ name: 'W', color: 'var(--stage-writeback)' }
+		{ name: 'F', label: 'Fetch', color: 'var(--stage-fetch)' },
+		{ name: 'D', label: 'Decode', color: 'var(--stage-decode)' },
+		{ name: 'E', label: 'Execute', color: 'var(--stage-execute)' },
+		{ name: 'M', label: 'Memory', color: 'var(--stage-memory)' },
+		{ name: 'W', label: 'Writeback', color: 'var(--stage-writeback)' }
 	];
 
 	// Format forwarding status
@@ -25,7 +25,7 @@
 	// Format branch predictor
 	function getPredictorStatus(): string {
 		const { branchPredictor, predictorInitial } = appState.config;
-		if (branchPredictor === 'none') return 'None';
+		if (branchPredictor === 'none') return 'NONE';
 		const init = predictorInitial === 'taken' ? 'T' : 'NT';
 		return `${branchPredictor} (${init})`;
 	}
@@ -40,14 +40,15 @@
 		<span class="separator">|</span>
 		<span class="config-item">
 			<span class="label">Cycles:</span>
-			<span class="value"
-				>ALU×{appState.config.latencies.alu} MUL×{appState.config.latencies.mul} MEM×{appState
-					.config.latencies.mem}</span
-			>
+			<span class="value">
+				ALU×{appState.config.latencies.alu}
+				MUL×{appState.config.latencies.mul}
+				MEM×{appState.config.latencies.mem}
+			</span>
 		</span>
 		<span class="separator">|</span>
 		<span class="config-item">
-			<span class="label">BP:</span>
+			<span class="label">Branch Predictor:</span>
 			<span class="value">{getPredictorStatus()}</span>
 		</span>
 	</div>
@@ -55,23 +56,33 @@
 	{#if appState.result}
 		<div class="stats">
 			<span class="stat">{appState.result.totalCycles} cycles</span>
-			<span class="stat">{appState.result.timeline.length} instr</span>
+
 			{#if appState.result.hazards.length > 0}
 				<span class="stat">{appState.result.hazards.length} hazards</span>
 			{/if}
 			{#if appState.result.predictions.length > 0}
-				<span class="stat"
-					>{appState.result.mispredictions}/{appState.result.predictions.length} mispred</span
-				>
+				<span class="stat">
+					{appState.result.mispredictions}/{appState.result.predictions.length} mispredictions
+				</span>
 			{/if}
 		</div>
 	{/if}
 
 	<div class="legend">
 		{#each stages as stage}
-			<span class="stage-item" style="--color: {stage.color}">{stage.name}</span>
+			<div class="legend-item">
+				<span class="stage-badge" style="--color: {stage.color}">{stage.name}</span>
+				<span class="stage-label">{stage.label}</span>
+			</div>
 		{/each}
-		<span class="stage-item special">**</span>
+		<div class="legend-item">
+			<span class="stage-badge special">**</span>
+			<span class="stage-label">Stall</span>
+		</div>
+		<div class="legend-item">
+			<span class="stage-badge flushed">~~</span>
+			<span class="stage-label">Flush</span>
+		</div>
 	</div>
 </div>
 
@@ -85,7 +96,7 @@
 		border-top: 1px solid var(--border-color);
 		font-family: var(--font-mono);
 		font-size: 0.7rem;
-		gap: 1rem;
+		gap: 1.5rem;
 		flex-wrap: wrap;
 	}
 
@@ -125,10 +136,16 @@
 	.legend {
 		display: flex;
 		align-items: center;
+		gap: 0.75rem;
+	}
+
+	.legend-item {
+		display: flex;
+		align-items: center;
 		gap: 0.25rem;
 	}
 
-	.stage-item {
+	.stage-badge {
 		display: inline-flex;
 		align-items: center;
 		justify-content: center;
@@ -140,8 +157,19 @@
 		font-weight: 600;
 	}
 
-	.stage-item.special {
+	.stage-badge.special {
 		background: var(--stage-stall);
+		color: var(--text-secondary);
+	}
+
+	.stage-badge.flushed {
+		background: var(--stage-bubble);
+		color: var(--text-tertiary);
+		text-decoration: line-through;
+	}
+
+	.stage-label {
+		font-size: 0.65rem;
 		color: var(--text-secondary);
 	}
 </style>

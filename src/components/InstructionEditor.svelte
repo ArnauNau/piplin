@@ -61,14 +61,14 @@
 		flex-direction: column;
 		height: 100%;
 		background: var(--bg-secondary);
-		border-radius: 8px;
 		overflow: hidden;
 	}
 
 	.editor-header {
 		display: flex;
-		justify-content: space-between;
-		align-items: center;
+		flex-direction: column;
+		align-items: flex-start;
+		gap: 0.5rem;
 		padding: 0.75rem 1rem;
 		background: var(--bg-tertiary);
 		border-bottom: 1px solid var(--border-color);
@@ -83,9 +83,11 @@
 
 	.examples {
 		display: flex;
+		flex-wrap: wrap;
 		gap: 0.5rem;
 		align-items: center;
 		font-size: 0.75rem;
+		width: 100%;
 	}
 
 	.examples span {

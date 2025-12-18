@@ -1,15 +1,14 @@
 <script lang="ts">
 	import { getAppState } from '$lib/stores.svelte';
 	import type { CycleEntry, StageName } from '$lib/types';
-	import { parseProgram } from '$lib/parser';
 
 	const appState = getAppState();
 
-	// Get instruction list from current code
-	function getInstructions() {
-		const parsed = parseProgram(appState.code);
-		return parsed.instructions;
-	}
+	// Props
+	let { onInspect, onInspectStage } = $props<{
+		onInspect: (op: string) => void;
+		onInspectStage?: (stage: string, cycle: number, entry: CycleEntry) => void;
+	}>();
 
 	// Stage colors
 	const stageColors: Record<string, string> = {
@@ -35,43 +34,6 @@
 		return text;
 	}
 
-	// Get tooltip for cell
-	function getTooltip(entry: CycleEntry, _instrIdx: number): string {
-		const lines: string[] = [];
-
-		if (entry.stage === 'stall') {
-			lines.push('Stalled due to data hazard');
-			if (entry.hazardType) {
-				lines.push(`Hazard type: ${entry.hazardType.toUpperCase()}`);
-			}
-		} else if (entry.flushed) {
-			lines.push('Flushed due to branch misprediction');
-		} else if (entry.stage !== 'bubble') {
-			const stageNames: Record<StageName, string> = {
-				F: 'Fetch',
-				D: 'Decode',
-				E: 'Execute',
-				M: 'Memory',
-				W: 'Writeback'
-			};
-			lines.push(stageNames[entry.stage as StageName] || entry.stage);
-
-			if (entry.cycleInStage && entry.totalCycles) {
-				lines.push(`Cycle ${entry.cycleInStage} of ${entry.totalCycles}`);
-			}
-
-			if (entry.forwardingFrom && entry.forwardingFrom.length > 0) {
-				lines.push('');
-				lines.push('Forwarding:');
-				for (const fwd of entry.forwardingFrom) {
-					lines.push(`  ${fwd.register}: ${fwd.fromStage}→E from I${fwd.fromInstruction + 1}`);
-				}
-			}
-		}
-
-		return lines.join('\n');
-	}
-
 	// Truncate instruction for display
 	function truncateInstr(raw: string, maxLen: number = 20): string {
 		// Remove comments
@@ -81,39 +43,77 @@
 		}
 		return clean;
 	}
+
+	function handleInstrClick(raw: string) {
+		const parts = raw.trim().split(/[\s,]+/);
+		if (parts.length > 0) {
+			const op = parts[0].toUpperCase();
+			if (onInspect) {
+				onInspect(op);
+			}
+		}
+	}
+
+	function handleStageClick(entry: CycleEntry, cycleIdx: number) {
+		if (entry.stage === 'bubble') return;
+
+		if (onInspectStage) {
+			onInspectStage(entry.stage, cycleIdx + 1, entry);
+		}
+	}
 </script>
 
 <div class="grid-container">
-	{#if appState.result && appState.result.timeline.length > 0}
-		{@const instructions = getInstructions()}
-		{@const maxCycles = Math.max(...appState.result.timeline.map((t) => t.length))}
+	{#if appState.result && appState.result.trace.length > 0}
+		{@const trace = appState.result.trace}
+		{@const totalCycles = appState.result.totalCycles}
 
 		<div class="grid-scroll">
 			<table class="pipeline-grid">
 				<thead>
 					<tr>
 						<th class="instr-header"></th>
-						{#each Array(maxCycles) as _, i}
+						{#each Array(totalCycles) as _, i}
 							<th class="cycle-header">{i + 1}</th>
 						{/each}
 					</tr>
 				</thead>
 				<tbody>
-					{#each appState.result.timeline as row, instrIdx}
+					{#each trace as row, traceIdx}
+						<!-- Label row -->
+						{#if row.label}
+							<tr class="label-row">
+								<td class="instr-cell label-cell">{row.label}</td>
+								<td colspan={totalCycles} class="label-line"></td>
+							</tr>
+						{/if}
+
+						<!-- Instruction row -->
 						<tr>
-							<td class="instr-cell" title={instructions[instrIdx]?.raw}>
-								<span class="instr-num">I{instrIdx + 1}</span>
-								<span class="instr-text">{truncateInstr(instructions[instrIdx]?.raw ?? '')}</span>
+							<td class="instr-cell">
+								<button
+									class="instr-btn"
+									title="View documentation for {row.instruction.opcode}"
+									onclick={() => handleInstrClick(row.instruction.raw)}
+								>
+									<span class="instr-num">{traceIdx}</span>
+									<span class="instr-text"
+										>{truncateInstr(row.instruction.raw)}</span
+									>
+								</button>
 							</td>
-							{#each row as entry, _cycleIdx}
+
+							{#each row.timeline as entry, cycleIdx}
 								<td
 									class="stage-cell"
 									class:stall={entry.stage === 'stall'}
 									class:bubble={entry.stage === 'bubble'}
 									class:flushed={entry.flushed}
-									class:has-forwarding={entry.forwardingFrom && entry.forwardingFrom.length > 0}
+									class:has-forwarding={entry.forwardingFrom &&
+										entry.forwardingFrom.length > 0}
+									class:clickable={entry.stage !== 'bubble'}
 									style="--stage-color: {stageColors[entry.stage]}"
-									title={getTooltip(entry, instrIdx)}
+									onclick={() => handleStageClick(entry, cycleIdx)}
 								>
 									{formatCell(entry)}
 								</td>
@@ -185,12 +185,42 @@
 		left: 0;
 		background: var(--bg-secondary);
 		z-index: 1;
-		padding-right: 0.75rem;
+		padding: 0;
+	}
+
+	.label-cell {
+		color: var(--accent-light);
+		font-weight: bold;
+		font-size: 0.75rem;
+		padding: 0.5rem 0.25rem 0.1rem 0.5rem; /* Reduced bottom padding */
+	}
+
+	.label-line {
+		border-bottom: 1px dashed var(--border-color);
+		padding: 0;
+	}
+
+	.instr-btn {
+		display: flex;
+		align-items: center;
+		width: 100%;
+		height: 100%;
+		padding: 0.25rem 0.75rem 0.25rem 0;
+		background: none;
+		border: none;
+		cursor: pointer;
+		text-align: left;
+		transition: opacity 0.15s;
+	}
+
+	.instr-btn:hover {
+		opacity: 0.7;
+		background: var(--bg-tertiary);
 	}
 
 	.instr-num {
 		display: inline-block;
-		width: 22px;
+		width: 28px;
 		color: var(--text-tertiary);
 		font-size: 0.65rem;
 	}
@@ -198,6 +228,7 @@
 	.instr-text {
 		color: var(--text-primary);
 		font-size: 0.7rem;
+		font-family: var(--font-mono);
 	}
 
 	.stage-cell {
@@ -207,6 +238,11 @@
 		font-size: 0.7rem;
 		min-width: 28px;
 		height: 22px;
+		cursor: default;
+	}
+
+	.stage-cell.clickable {
+		cursor: pointer;
 	}
 
 	.stage-cell:not(.bubble):not(.stall):hover {
