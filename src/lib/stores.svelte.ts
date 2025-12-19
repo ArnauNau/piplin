@@ -100,7 +100,8 @@ export function createAppState() {
                     ADDI $2, $0, 5
                     BEQ $1, $2, skip  # Taken ($1 == $2)
                     ADD $3, $3, $4    # Flushed if mispredicted
-                    skip: SUB $5, $5, $6`,
+                    skip:
+                    SUB $5, $5, $6`,
 
 				'mul-latency': `# Multi-cycle execution
                     # MUL takes multiple cycles in EX
