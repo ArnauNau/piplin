@@ -17,7 +17,7 @@
 
 	function selectOp(op: string) {
 		selectedOp = op;
-		selectedStage = null; // Clear stage selection
+		selectedStage = null;
 	}
 
 	function clearStage() {
@@ -36,7 +36,9 @@
 				<h2>
 					{selectedStage.stage === 'stall' ? 'Stall' : selectedStage.stage} Stage
 				</h2>
-				<span class="badge type-special">Cycle {selectedStage.cycle}</span>
+				<span class="badge type-special">
+					Cycle {selectedStage.cycle}
+				</span>
 			</div>
 
 			{#if selectedStage.entry.flushed}
@@ -60,8 +62,8 @@
 					<div class="doc-section">
 						<h4>Timing</h4>
 						<p>
-							Cycle {selectedStage.entry.cycleInStage} of {selectedStage.entry
-								.totalCycles}
+							Cycle {selectedStage.entry.cycleInStage} of
+							{selectedStage.entry.totalCycles}
 						</p>
 					</div>
 				{/if}
@@ -72,10 +74,12 @@
 						<ul class="operand-list">
 							{#each selectedStage.entry.forwardingFrom as fwd}
 								<li>
-									<span class="operand-name">{fwd.register}</span>
-									<span class="operand-desc"
-										>Forwarded from {fwd.fromStage} (Instr #{fwd.fromInstruction})</span
-									>
+									<span class="operand-name">
+										{fwd.register}
+									</span>
+									<span class="operand-desc">
+										Forwarded from {fwd.fromStage} (Instr #{fwd.fromInstruction})
+									</span>
 								</li>
 							{/each}
 						</ul>
@@ -112,6 +116,15 @@
 					<h4>Format</h4>
 					<code class="format-code">{selectedDoc.format}</code>
 				</div>
+
+				{#if selectedDoc.operation}
+					<div class="doc-section">
+						<h4>Operation</h4>
+						<div class="operation-card">
+							<code class="operation-text">{selectedDoc.operation}</code>
+						</div>
+					</div>
+				{/if}
 
 				<div class="doc-section">
 					<h4>Description</h4>
@@ -326,6 +339,20 @@
 		font-size: 0.85rem;
 		color: var(--text-primary);
 		white-space: pre-wrap;
+	}
+
+	.operation-card {
+		padding: 1rem;
+		background: var(--bg-primary);
+		border-radius: 6px;
+	}
+
+	.operation-text {
+		display: block;
+		font-family: var(--font-mono);
+		font-size: 0.9rem;
+		font-weight: 600;
+		color: var(--text-primary);
 	}
 
 	.operand-list {
