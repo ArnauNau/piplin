@@ -30,14 +30,24 @@
 		});
 	}
 
+	function toggleTransparency() {
+		appState.updateConfig({
+			regFileTransparency: !appState.config.regFileTransparency
+		});
+	}
+
 	function updatePredictor(e: Event) {
 		const target = e.target as HTMLSelectElement;
-		appState.updateConfig({ branchPredictor: target.value as BranchPredictorType });
+		appState.updateConfig({
+			branchPredictor: target.value as BranchPredictorType
+		});
 	}
 
 	function updatePredictorInitial(e: Event) {
 		const target = e.target as HTMLSelectElement;
-		appState.updateConfig({ predictorInitial: target.value as 'taken' | 'not-taken' });
+		appState.updateConfig({
+			predictorInitial: target.value as 'taken' | 'not-taken'
+		});
 	}
 
 	function updateRegister(reg: string, e: Event) {
@@ -159,6 +169,34 @@
 			</div>
 		{/if}
 	</section>
+
+	<section>
+		<h3>Register File</h3>
+		<div class="forwarding-toggles">
+			<div class="toggle-row-wrapper">
+				<label class="toggle-row" for="transparency-toggle">
+					<span class="label-text">
+						Transparency
+						<div
+							class="help-icon"
+							title="Allow reading from a register in the same cycle it is written (Split-Cycle)"
+						>
+							?
+						</div>
+					</span>
+					<button
+						id="transparency-toggle"
+						class="toggle"
+						class:active={appState.config.regFileTransparency}
+						onclick={toggleTransparency}
+						aria-pressed={appState.config.regFileTransparency}
+						aria-label="Toggle Register File Transparency"
+					>
+					</button>
+				</label>
+			</div>
+		</div>
+	</section>
 </div>
 
 <style>
@@ -201,10 +239,36 @@
 		align-items: center;
 		font-size: 0.8rem;
 		color: var(--text-primary);
+		cursor: pointer;
 	}
 
-	label span {
+	.label-text {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
 		color: var(--text-secondary);
+	}
+
+	.help-icon {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 14px;
+		height: 14px;
+		border-radius: 50%;
+		background: var(--bg-tertiary);
+		border: 1px solid var(--border-color);
+		color: var(--text-tertiary);
+		font-size: 0.6rem;
+		font-weight: bold;
+		cursor: help;
+		transition: all 0.15s ease;
+	}
+
+	.help-icon:hover {
+		background: var(--accent-color);
+		color: white;
+		border-color: var(--accent-color);
 	}
 
 	input[type='number'],
