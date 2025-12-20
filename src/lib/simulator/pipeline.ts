@@ -96,7 +96,7 @@ export function simulatePipeline(
 		trace.push({
 			instruction: instructions[0],
 			timeline: [],
-			label: label ? `label ${label}` : undefined
+			label: label ? `${label}:` : undefined
 		});
 
 		stages.F = {
@@ -128,7 +128,7 @@ export function simulatePipeline(
 			const { instr } = stage;
 			//write result to register file
 			if (instr && instr.rd && instr.rd !== '$0') {
-				if (instr.type == 'alu' || instr.type == 'load') {
+				if (instr.type === 'alu' || instr.type === 'load') {
 					setRegValue(regs, instr.rd, stage.computedValue ?? 0);
 				}
 			}
@@ -260,17 +260,38 @@ export function simulatePipeline(
 			if (instr) {
 				const sources = getSourceRegisters(instr);
 				for (const source of sources) {
-					// Check E Hazard
+					//check W hazard
+					//transparency check, if OFF can't read register in D while written in W. Stall until W completes.
+					if (
+						!config.regFileTransparency &&
+						stages.W &&
+						!stages.W.stage.flushed &&
+						stages.W.stage.instr
+					) {
+						const wDest = getDestRegister(stages.W.stage.instr);
+						if (wDest === source && wDest !== '$0') {
+							decodeStalled = true;
+							hazardInfo = {
+								type: 'structural',
+								cycle,
+								instructionIndex: traceIndex,
+								description: 'Wait for WB on ${source}',
+								dependsOn: stages.W.traceIndex,
+								register: source
+							};
+							break;
+						}
+					}
+
+					//check E Hazard
 					if (stages.E && !stages.E.stage.flushed && stages.E.stage.instr) {
 						const exDest = getDestRegister(stages.E.stage.instr);
 						if (exDest === source) {
 							const isLoad = stages.E.stage.instr.type === 'load';
 
-							//if ID depends on instruction in EX:
+							//if data depends on instruction in EX:
 
-							//case 1: instruction in EX is a LOAD.
-							//result is NOT ready until end of MEM.
-							//must stall D->E transition regardless of forwarding settings.
+							//case 1: LOAD. result is NOT ready until MEM ends. must stall D->E regardless of forwarding.
 							if (isLoad) {
 								decodeStalled = true;
 								hazardInfo = {
@@ -284,10 +305,7 @@ export function simulatePipeline(
 								break;
 							}
 
-							//case 2: instruction in EX is ALU.
-							//result is computed in EX.
-							//if EX->EX forwarding is enabled, can proceed.
-							//if disabled, must stall.
+							//case 2: ALU. result is computed in EX. if EX->EX forwarding is ON, proceed. if OFF, stall.
 							if (!config.forwarding.exToEx) {
 								decodeStalled = true;
 								hazardInfo = {
@@ -324,10 +342,9 @@ export function simulatePipeline(
 								break;
 							}
 
-							// If M stage IS finished (remaining == 0):
-							// If forwarding (memToEx) is disabled, we cannot bypass from M.
-							// We must wait for the instruction to reach Writeback (next cycle)
-							// to ensure registers are updated before D reads them (or D->E happens).
+							//if M stage is finished (remaining == 0):
+							//if forwarding (memToEx) is OFF, cannot bypass from M.
+							//must wait for the instruction to reach WB (next cycle) to ensure registers are updated before D reads them (or D->E happens).
 							if (!config.forwarding.memToEx) {
 								decodeStalled = true;
 								hazardInfo = {

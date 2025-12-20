@@ -8,6 +8,8 @@ export function executeAlu(instr: Instruction, regs: RegisterFile): number {
 	switch (instr.opcode.toUpperCase()) {
 		case 'ADD':
 		case 'ADDI':
+		case 'LW': //lw and sw use ADD logic (base + offset)
+		case 'SW': //      ^^^
 			return rs1Val + rs2Val;
 		case 'SUB':
 			return rs1Val - rs2Val;
@@ -92,5 +94,5 @@ export function cloneRegisters(regs: RegisterFile): RegisterFile {
 
 // Clone memory
 export function cloneMemory(mem: Memory): Memory {
-	return new Map(mem);
+	return new Map(mem.entries());
 }
