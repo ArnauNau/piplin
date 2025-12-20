@@ -4,6 +4,10 @@ export type InstructionType = 'alu' | 'load' | 'store' | 'branch' | 'nop';
 
 export type AluOp = 'add' | 'sub' | 'mul' | 'and' | 'or' | 'xor' | 'slt';
 
+export type HazardType = 'structural' | 'raw' | 'control';
+
+export type BranchPredictorType = 'none' | '1bit' | '2bit';
+
 export interface Instruction {
 	raw: string;
 	index: number;
@@ -26,8 +30,6 @@ export interface CycleEntry {
 	forwardingFrom?: ForwardingInfo[];
 	flushed?: boolean; // true if flushed due to misprediction
 }
-
-export type HazardType = 'raw' | 'structural' | 'control';
 
 export interface HazardInfo {
 	type: HazardType;
@@ -54,31 +56,28 @@ export interface BranchPrediction {
 	flushCycles: number; // cycles lost due to misprediction
 }
 
-export type RegisterFile = Record<string, number>;
+export interface RegisterFile {
+	[register: string]: number;
+}
 
-export type Memory = Map<number, number>;
+export function createDefaultRegisters(): RegisterFile {
+	const regs: RegisterFile = {};
+	for (let i = 0; i < 32; i++) {
+		regs[`$${i}`] = 0;
+	}
+	return regs;
+}
+
+export interface Memory {
+	get(address: number): number | undefined;
+	set(address: number, value: number): void;
+	entries(): IterableIterator<[number, number]>;
+}
 
 export interface TraceEntry {
 	instruction: Instruction;
 	timeline: CycleEntry[];
 	label?: string;
-}
-
-export interface SimulationResult {
-	trace: TraceEntry[];
-	totalCycles: number;
-	hazards: HazardInfo[];
-	predictions: BranchPrediction[];
-	mispredictions: number;
-	finalRegisters: RegisterFile;
-	finalMemory: Memory;
-}
-
-export type BranchPredictorType = 'none' | '1bit' | '2bit';
-
-export interface ForwardingConfig {
-	exToEx: boolean; // EX→EX: forward ALU result to next instruction
-	memToEx: boolean; // MEM→EX: forward from MEM stage to EX
 }
 
 export interface Config {
@@ -87,11 +86,15 @@ export interface Config {
 		mul: number;
 		mem: number;
 	};
-	forwarding: ForwardingConfig;
+	forwarding: {
+		exToEx: boolean;
+		memToEx: boolean;
+	};
 	branchPredictor: BranchPredictorType;
 	predictorInitial: 'taken' | 'not-taken';
 	initialRegisters: RegisterFile;
 	initialMemory: Memory;
+	regFileTransparency: boolean; //true = allow simultaneous / split-cycle, false = wait for WB
 }
 
 export function defaultConfig(): Config {
@@ -108,16 +111,9 @@ export function defaultConfig(): Config {
 		branchPredictor: 'none',
 		predictorInitial: 'not-taken',
 		initialRegisters: createDefaultRegisters(),
-		initialMemory: new Map()
+		initialMemory: new Map(),
+		regFileTransparency: false
 	};
-}
-
-export function createDefaultRegisters(): RegisterFile {
-	const regs: RegisterFile = {};
-	for (let i = 0; i < 32; i++) {
-		regs[`$${i}`] = 0;
-	}
-	return regs;
 }
 
 export interface ParseResult {
@@ -129,4 +125,14 @@ export interface ParseResult {
 export interface ParseError {
 	line: number;
 	message: string;
+}
+
+export interface SimulationResult {
+	trace: TraceEntry[];
+	totalCycles: number;
+	hazards: HazardInfo[];
+	predictions: BranchPrediction[];
+	mispredictions: number;
+	finalRegisters: RegisterFile;
+	finalMemory: Memory;
 }

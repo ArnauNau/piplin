@@ -1,16 +1,14 @@
 <script lang="ts">
 	import { getAppState } from '$lib/stores.svelte';
-	import type { CycleEntry, StageName } from '$lib/types';
+	import type { CycleEntry, StageName, TraceEntry } from '$lib/types';
 
 	const appState = getAppState();
 
-	// Props
 	let { onInspect, onInspectStage } = $props<{
-		onInspect: (op: string) => void;
+		onInspect: (entry: TraceEntry, index: number) => void;
 		onInspectStage?: (stage: string, cycle: number, entry: CycleEntry) => void;
 	}>();
 
-	// Stage colors
 	const stageColors: Record<string, string> = {
 		F: 'var(--stage-fetch)',
 		D: 'var(--stage-decode)',
@@ -21,7 +19,6 @@
 		bubble: 'var(--stage-bubble)'
 	};
 
-	// Format cell content
 	function formatCell(entry: CycleEntry): string {
 		if (entry.stage === 'stall') return '**';
 		if (entry.stage === 'bubble') return '';
@@ -34,23 +31,18 @@
 		return text;
 	}
 
-	// Truncate instruction for display
 	function truncateInstr(raw: string, maxLen: number = 20): string {
-		// Remove comments
 		let clean = raw.split('#')[0].split('//')[0].trim();
 		if (clean.length > maxLen) {
 			clean = clean.substring(0, maxLen - 2) + '..';
 		}
+
 		return clean;
 	}
 
-	function handleInstrClick(raw: string) {
-		const parts = raw.trim().split(/[\s,]+/);
-		if (parts.length > 0) {
-			const op = parts[0].toUpperCase();
-			if (onInspect) {
-				onInspect(op);
-			}
+	function handleInstrClick(entry: TraceEntry, index: number) {
+		if (onInspect) {
+			onInspect(entry, index);
 		}
 	}
 
@@ -83,7 +75,9 @@
 						<!-- Label row -->
 						{#if row.label}
 							<tr class="label-row">
-								<td class="instr-cell label-cell">{row.label}</td>
+								<td class="instr-cell label-cell">
+									{row.label}
+								</td>
 								<td colspan={totalCycles} class="label-line"></td>
 							</tr>
 						{/if}
@@ -94,12 +88,12 @@
 								<button
 									class="instr-btn"
 									title="View documentation for {row.instruction.opcode}"
-									onclick={() => handleInstrClick(row.instruction.raw)}
+									onclick={() => handleInstrClick(row, traceIdx)}
 								>
 									<span class="instr-num">{traceIdx}</span>
-									<span class="instr-text"
-										>{truncateInstr(row.instruction.raw)}</span
-									>
+									<span class="instr-text">
+										{truncateInstr(row.instruction.raw ?? '')}
+									</span>
 								</button>
 							</td>
 

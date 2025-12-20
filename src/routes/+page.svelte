@@ -4,11 +4,17 @@
 	import PipelineGrid from '../components/PipelineGrid.svelte';
 	import StatusBar from '../components/StatusBar.svelte';
 	import DocumentationPanel from '../components/DocumentationPanel.svelte';
-	import type { CycleEntry } from '$lib/types';
+	import type { CycleEntry, TraceEntry } from '$lib/types';
+	import { getAppState } from '$lib/stores.svelte';
+
+	const appState = getAppState();
 
 	let panelOpen = $state(false);
 	let docsOpen = $state(false);
+
 	let selectedInstruction = $state<string | null>(null);
+	let selectedTraceEntry = $state<TraceEntry | null>(null);
+	let selectedTraceIndex = $state<number>(-1);
 
 	let selectedStage = $state<{
 		stage: string;
@@ -16,8 +22,10 @@
 		entry: CycleEntry;
 	} | null>(null);
 
-	function handleInstructionSelect(op: string) {
-		selectedInstruction = op;
+	function handleInstructionSelect(entry: TraceEntry, index: number) {
+		selectedInstruction = entry.instruction.opcode.toUpperCase();
+		selectedTraceEntry = entry;
+		selectedTraceIndex = index;
 		selectedStage = null;
 		if (!docsOpen) {
 			docsOpen = true;
@@ -27,6 +35,8 @@
 	function handleStageSelect(stage: string, cycle: number, entry: CycleEntry) {
 		selectedStage = { stage, cycle, entry };
 		selectedInstruction = null;
+		selectedTraceEntry = null;
+		selectedTraceIndex = -1;
 		if (!docsOpen) {
 			docsOpen = true;
 		}
@@ -81,7 +91,13 @@
 
 			{#if docsOpen}
 				<div class="panel-content">
-					<DocumentationPanel bind:selectedOp={selectedInstruction} bind:selectedStage />
+					<DocumentationPanel
+						bind:selectedOp={selectedInstruction}
+						bind:selectedStage
+						{selectedTraceEntry}
+						{selectedTraceIndex}
+						hazards={appState.result?.hazards ?? []}
+					/>
 				</div>
 			{/if}
 		</div>
@@ -179,25 +195,26 @@
 		flex: 1;
 		display: flex;
 		flex-direction: column;
-		min-height: 0;
+		height: 100%;
 		overflow: hidden;
 		width: 320px;
 	}
 
 	.editor-wrapper {
 		flex: 1;
-		min-height: 150px;
+		overflow: hidden;
 		border-bottom: 1px solid var(--border-color);
 	}
 
 	.sidebar-wrapper {
-		flex-shrink: 0;
-		max-height: 45%;
+		flex: 1;
 		overflow-y: auto;
 	}
 
 	.center-panel {
 		flex: 1;
-		min-width: 0;
+		overflow: hidden;
+		background-color: var(--bg-primary);
+		position: relative;
 	}
 </style>

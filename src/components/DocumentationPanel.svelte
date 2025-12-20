@@ -1,19 +1,40 @@
 <script lang="ts">
 	import { instructionDocs, getAllOps, type InstructionDoc } from '$lib/instructionData';
-	import type { CycleEntry } from '$lib/types';
+	import type { CycleEntry, HazardInfo, TraceEntry } from '$lib/types';
 
-	let { selectedOp = $bindable(), selectedStage = $bindable() } = $props<{
+	let {
+		selectedOp = $bindable(),
+		selectedStage = $bindable(),
+		selectedTraceEntry = null,
+		selectedTraceIndex = -1,
+		hazards = []
+	} = $props<{
 		selectedOp: string | null;
 		selectedStage?: {
 			stage: string;
 			cycle: number;
 			entry: CycleEntry;
 		} | null;
+		selectedTraceEntry?: TraceEntry | null;
+		selectedTraceIndex?: number;
+		hazards?: HazardInfo[];
 	}>();
 
 	const allOps = getAllOps();
 
 	let selectedDoc = $derived(selectedOp ? instructionDocs[selectedOp] : null);
+
+	//compute related hazards
+	let relatedHazards = $derived.by(() => {
+		if (selectedTraceIndex === -1) return { causedBy: [], causedTo: [] };
+
+		return {
+			//hazards where this instruction is the VICTIM (it stalls)
+			causedBy: hazards.filter((h: HazardInfo) => h.instructionIndex === selectedTraceIndex),
+			//hazards where this instruction is the AGGRESSOR (it stalls someone else)
+			causedTo: hazards.filter((h: HazardInfo) => h.dependsOn === selectedTraceIndex)
+		};
+	});
 
 	function selectOp(op: string) {
 		selectedOp = op;
@@ -123,6 +144,48 @@
 						<div class="operation-card">
 							<code class="operation-text">{selectedDoc.operation}</code>
 						</div>
+					</div>
+				{/if}
+
+				{#if selectedTraceEntry && (relatedHazards.causedBy.length > 0 || relatedHazards.causedTo.length > 0)}
+					<div class="doc-section">
+						<h4>Hazard Context</h4>
+
+						{#if relatedHazards.causedBy.length > 0}
+							<div class="hazard-group">
+								<h5 class="hazard-title">Stalls Suffered (Victim)</h5>
+								<ul class="hazard-list">
+									{#each relatedHazards.causedBy as h}
+										<li>
+											<span class="hazard-type">
+												{h.type.toUpperCase()} Hazard
+											</span>
+											<span class="hazard-desc">
+												Caused by Instr #{h.dependsOn} (Register: {h.register})
+											</span>
+										</li>
+									{/each}
+								</ul>
+							</div>
+						{/if}
+
+						{#if relatedHazards.causedTo.length > 0}
+							<div class="hazard-group">
+								<h5 class="hazard-title">Stalls Caused (Aggressor)</h5>
+								<ul class="hazard-list">
+									{#each relatedHazards.causedTo as h}
+										<li>
+											<span class="hazard-type">
+												{h.type.toUpperCase()} Hazard
+											</span>
+											<span class="hazard-desc">
+												Stalled Instr #{h.instructionIndex}
+											</span>
+										</li>
+									{/each}
+								</ul>
+							</div>
+						{/if}
 					</div>
 				{/if}
 
@@ -376,6 +439,40 @@
 
 	.operand-desc {
 		flex: 1;
+		color: var(--text-secondary);
+	}
+
+	.hazard-group {
+		margin-bottom: 1rem;
+		padding: 0.75rem;
+		background: var(--bg-primary);
+		border-radius: 4px;
+	}
+
+	.hazard-title {
+		margin: 0 0 0.5rem 0;
+		font-size: 0.75rem;
+		color: var(--accent-light);
+	}
+
+	.hazard-list {
+		list-style: none;
+		padding: 0;
+		margin: 0;
+	}
+
+	.hazard-list li {
+		margin-bottom: 0.25rem;
+		font-size: 0.8rem;
+	}
+
+	.hazard-type {
+		font-weight: bold;
+		color: var(--text-primary);
+		margin-right: 0.5rem;
+	}
+
+	.hazard-desc {
 		color: var(--text-secondary);
 	}
 
