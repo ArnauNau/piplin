@@ -7,7 +7,8 @@
 		selectedStage = $bindable(),
 		selectedTraceEntry = null,
 		selectedTraceIndex = -1,
-		hazards = []
+		hazards = [],
+		highlightedRegisters = $bindable(new Map())
 	} = $props<{
 		selectedOp: string | null;
 		selectedStage?: {
@@ -18,9 +19,17 @@
 		selectedTraceEntry?: TraceEntry | null;
 		selectedTraceIndex?: number;
 		hazards?: HazardInfo[];
+		highlightedRegisters?: Map<string, string>;
 	}>();
 
 	const allOps = getAllOps();
+
+	const PALETTE = [
+		'rgba(250, 204, 21, 0.4)', // Yellow-400
+		'rgba(96, 165, 250, 0.4)', // Blue-400
+		'rgba(74, 222, 128, 0.4)', // Green-400
+		'rgba(192, 132, 252, 0.4)' // Purple-400
+	];
 
 	let selectedDoc = $derived(selectedOp ? instructionDocs[selectedOp] : null);
 
@@ -36,9 +45,36 @@
 		};
 	});
 
+	//update highlighted registers when selection changes
+	$effect(() => {
+		const newMap = new Map<string, string>();
+
+		if (selectedTraceEntry) {
+			let colorIdx = 0;
+			const assignColor = (reg: string) => {
+				if (!reg || reg === '$0') return null;
+				if (!newMap.has(reg)) {
+					newMap.set(reg, PALETTE[colorIdx % PALETTE.length]);
+					colorIdx++;
+				}
+				return newMap.get(reg);
+			};
+
+			//victims (hazards causing this instruction to stall)
+			for (const h of relatedHazards.causedBy) {
+				if (h.register) assignColor(h.register);
+			}
+
+			//could add hovering logic later, for now just hazards are persistent
+		}
+
+		highlightedRegisters = newMap;
+	});
+
 	function selectOp(op: string) {
 		selectedOp = op;
 		selectedStage = null;
+		highlightedRegisters = new Map();
 	}
 
 	function clearStage() {
@@ -155,13 +191,25 @@
 							<div class="hazard-group">
 								<h5 class="hazard-title">Stalls Suffered (Victim)</h5>
 								<ul class="hazard-list">
-									{#each relatedHazards.causedBy as h}
+									{#each relatedHazards.causedBy as hazard}
 										<li>
 											<span class="hazard-type">
-												{h.type.toUpperCase()} Hazard
+												{hazard.description}
 											</span>
 											<span class="hazard-desc">
-												Caused by Instr #{h.dependsOn} (Register: {h.register})
+												Caused by Instr #{hazard.dependsOn}
+												{#if hazard.register}
+													(Register:
+													<span
+														class="reg-chip"
+														style="background-color: {highlightedRegisters.get(
+															hazard.register
+														) ?? 'transparent'}"
+													>
+														{hazard.register}
+													</span>
+													)
+												{/if}
 											</span>
 										</li>
 									{/each}
@@ -173,13 +221,13 @@
 							<div class="hazard-group">
 								<h5 class="hazard-title">Stalls Caused (Aggressor)</h5>
 								<ul class="hazard-list">
-									{#each relatedHazards.causedTo as h}
+									{#each relatedHazards.causedTo as hazard}
 										<li>
 											<span class="hazard-type">
-												{h.type.toUpperCase()} Hazard
+												{hazard.description}
 											</span>
 											<span class="hazard-desc">
-												Stalled Instr #{h.instructionIndex}
+												Stalled Instr #{hazard.instructionIndex}
 											</span>
 										</li>
 									{/each}
@@ -446,7 +494,7 @@
 		margin-bottom: 1rem;
 		padding: 0.75rem;
 		background: var(--bg-primary);
-		border-radius: 4px;
+		border-radius: 6px;
 	}
 
 	.hazard-title {
@@ -483,5 +531,15 @@
 		justify-content: center;
 		color: var(--text-tertiary);
 		font-size: 0.9rem;
+	}
+
+	.reg-chip {
+		display: inline-block;
+		padding: 0 4px;
+		border-radius: 3px;
+		font-weight: 600;
+		color: var(--text-primary);
+		font-family: var(--font-mono);
+		border: 1x solid rgba(0, 0, 0, 0.1);
 	}
 </style>

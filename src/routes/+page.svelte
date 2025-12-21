@@ -75,7 +75,11 @@
 
 		<!-- Pipeline visualization -->
 		<div class="center-panel">
-			<PipelineGrid onInspect={handleInstructionSelect} onInspectStage={handleStageSelect} />
+			<PipelineGrid
+				onInspect={handleInstructionSelect}
+				onInspectStage={handleStageSelect}
+				{highlightedRegisters}
+			/>
 		</div>
 
 		<!-- Collapsible right panel (Docs) -->
@@ -94,6 +98,7 @@
 					<DocumentationPanel
 						bind:selectedOp={selectedInstruction}
 						bind:selectedStage
+						bind:highlightedRegisters
 						{selectedTraceEntry}
 						{selectedTraceIndex}
 						hazards={appState.result?.hazards ?? []}

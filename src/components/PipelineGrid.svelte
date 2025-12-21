@@ -4,9 +4,10 @@
 
 	const appState = getAppState();
 
-	let { onInspect, onInspectStage } = $props<{
+	let { onInspect, onInspectStage, highlightedRegisters } = $props<{
 		onInspect: (entry: TraceEntry, index: number) => void;
 		onInspectStage?: (stage: string, cycle: number, entry: CycleEntry) => void;
+		highlightedRegisters: Map<string, string>;
 	}>();
 
 	const stageColors: Record<string, string> = {
@@ -90,9 +91,30 @@
 									title="View documentation for {row.instruction.opcode}"
 									onclick={() => handleInstrClick(row, traceIdx)}
 								>
-									<span class="instr-num">{traceIdx}</span>
+									<span class="instr-num">
+										{traceIdx}
+									</span>
 									<span class="instr-text">
-										{truncateInstr(row.instruction.raw ?? '')}
+										{#if highlightedRegisters.size > 0}
+											{@const tokens = truncateInstr(
+												row.instruction.raw ?? ''
+											).split(/([,\s()]+)/)}
+											{#each tokens as token}
+												{@const color = highlightedRegisters.get(token)}
+												{#if color}
+													<span
+														class="token-highlight"
+														style="background-color: {color}"
+													>
+														{token}
+													</span>
+												{:else}
+													{token}
+												{/if}
+											{/each}
+										{:else}
+											{truncateInstr(row.instruction.raw ?? '')}
+										{/if}
 									</span>
 								</button>
 							</td>
@@ -284,5 +306,12 @@
 	.grid-scroll::-webkit-scrollbar-thumb {
 		background: var(--border-color);
 		border-radius: 3px;
+	}
+
+	.token-highlight {
+		border-radius: 2px;
+		padding: 0 1px;
+		color: var(--text-primary);
+		font-weight: bold;
 	}
 </style>
