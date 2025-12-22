@@ -41,6 +41,53 @@
 			docsOpen = true;
 		}
 	}
+
+	let leftPanelWidth = $state(350);
+	let rightPanelWidth = $state(500);
+	let isDraggingLeft = $state(false);
+	let isDraggingRight = $state(false);
+
+	let highlightedRegisters = $state<Map<string, string>>(new Map());
+
+	function startResizeLeft(e: MouseEvent) {
+		e.preventDefault();
+		isDraggingLeft = true;
+		window.addEventListener('mousemove', handleResizeLeft);
+		window.addEventListener('mouseup', stopResizeLeft);
+	}
+
+	function handleResizeLeft(e: MouseEvent) {
+		if (isDraggingLeft) {
+			// clamp between 250px - 700px
+			leftPanelWidth = Math.max(250, Math.min(700, e.clientX));
+		}
+	}
+
+	function stopResizeLeft() {
+		isDraggingLeft = false;
+		window.removeEventListener('mousemove', handleResizeLeft);
+		window.removeEventListener('mouseup', stopResizeLeft);
+	}
+
+	function startResizeRight(e: MouseEvent) {
+		e.preventDefault();
+		isDraggingRight = true;
+		window.addEventListener('mousemove', handleResizeRight);
+		window.addEventListener('mouseup', stopResizeRight);
+	}
+
+	function handleResizeRight(e: MouseEvent) {
+		if (isDraggingRight) {
+			//clamp between 250px - 700px. Right panel width is (WindowWidth - MouseX)
+			rightPanelWidth = Math.max(250, Math.min(700, window.innerWidth - e.clientX));
+		}
+	}
+
+	function stopResizeRight() {
+		isDraggingRight = false;
+		window.removeEventListener('mousemove', handleResizeRight);
+		window.removeEventListener('mouseup', stopResizeRight);
+	}
 </script>
 
 <svelte:head>
@@ -48,10 +95,14 @@
 	<meta name="description" content="CPU Pipeline Visualization Tool for RISC-V instructions" />
 </svelte:head>
 
-<div class="app-container">
+<div class="app-container" class:dragging={isDraggingLeft || isDraggingRight}>
 	<div class="main-content">
 		<!-- Collapsible left panel -->
-		<div class="left-panel" class:open={panelOpen}>
+		<div
+			class="left-panel"
+			class:open={panelOpen}
+			style="width: {panelOpen ? leftPanelWidth + 'px' : ''}"
+		>
 			<button
 				class="panel-toggle"
 				onclick={() => (panelOpen = !panelOpen)}
@@ -62,13 +113,18 @@
 			</button>
 
 			{#if panelOpen}
-				<div class="panel-content">
+				<div class="panel-content" style="width: {leftPanelWidth + 'px'}">
 					<div class="editor-wrapper">
 						<InstructionEditor />
 					</div>
 					<div class="sidebar-wrapper">
 						<ConfigSidebar />
 					</div>
+					<button
+						class="resizer-handle left"
+						onmousedown={startResizeLeft}
+						aria-label="Resize left panel"
+					></button>
 				</div>
 			{/if}
 		</div>
@@ -83,7 +139,11 @@
 		</div>
 
 		<!-- Collapsible right panel (Docs) -->
-		<div class="right-panel" class:open={docsOpen}>
+		<div
+			class="right-panel"
+			class:open={docsOpen}
+			style="width: {docsOpen ? rightPanelWidth + 'px' : ''}"
+		>
 			<button
 				class="panel-toggle right"
 				onclick={() => (docsOpen = !docsOpen)}
@@ -94,7 +154,7 @@
 			</button>
 
 			{#if docsOpen}
-				<div class="panel-content">
+				<div class="panel-content" style="width: {rightPanelWidth + 'px'}">
 					<DocumentationPanel
 						bind:selectedOp={selectedInstruction}
 						bind:selectedStage
@@ -104,6 +164,11 @@
 						hazards={appState.result?.hazards ?? []}
 					/>
 				</div>
+				<button
+					class="resizer-handle right"
+					onmousedown={startResizeRight}
+					aria-label="Resize right panel"
+				></button>
 			{/if}
 		</div>
 	</div>
@@ -119,6 +184,16 @@
 		background: var(--bg-primary);
 	}
 
+	.app-container.dragging {
+		user-select: none;
+		cursor: col-resize;
+	}
+
+	.app-container.dragging .left-panel,
+	.app-container.dragging .right-panel {
+		transition: none;
+	}
+
 	.main-content {
 		flex: 1;
 		display: flex;
@@ -131,10 +206,7 @@
 		background: var(--bg-secondary);
 		border-right: 1px solid var(--border-color);
 		transition: width 0.3s ease;
-	}
-
-	.left-panel.open {
-		width: 320px;
+		position: relative;
 	}
 
 	.right-panel {
@@ -144,10 +216,7 @@
 		background: var(--bg-secondary);
 		border-left: 1px solid var(--border-color);
 		transition: width 0.3s ease;
-	}
-
-	.right-panel.open {
-		width: 320px;
+		position: relative;
 	}
 
 	.panel-toggle {
@@ -202,7 +271,33 @@
 		flex-direction: column;
 		height: 100%;
 		overflow: hidden;
-		width: 320px;
+		position: relative;
+	}
+
+	.resizer-handle {
+		position: absolute;
+		top: 0;
+		bottom: 0;
+		width: 4px;
+		cursor: col-resize;
+		z-index: 50;
+		transition: background-color 0.2s;
+		background: transparent;
+		border: none;
+		padding: 0;
+	}
+
+	.resizer-handle:hover,
+	.resizer-handle:active {
+		background-color: var(--accent-light);
+	}
+
+	.resizer-handle.left {
+		right: 0;
+	}
+
+	.resizer-handle.right {
+		left: 0;
 	}
 
 	.editor-wrapper {
