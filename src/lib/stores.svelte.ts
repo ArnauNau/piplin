@@ -80,34 +80,34 @@ export function createAppState() {
 		loadExample(name: string) {
 			const examples: Record<string, string> = {
 				hazard: `# Data hazard demonstration
-                    ADD $1, $2, $3
-                    SUB $4, $1, $5    # RAW hazard on $1`,
+ADD $1, $2, $3
+SUB $4, $1, $5    # RAW hazard on $1`,
 
 				'load-use': `# Load-use hazard
-                    LW $1, 0($2)
-                    ADD $3, $1, $4    # Must stall - LW result available after MEM`,
+LW $1, 0($2)
+ADD $3, $1, $4    # Must stall - LW result available after MEM`,
 
 				forwarding: `# Forwarding demonstration
-                    # Toggle forwarding to see the difference
-                    ADDI $1, $0, 10
-                    ADDI $2, $0, 20
-                    ADD $3, $1, $2    # Uses forwarded values from $1 and $2
-                    SUB $4, $3, $1    # Uses forwarded value from $3
-                    MUL $5, $4, $2    # Uses forwarded value from $4`,
+# Toggle forwarding to see the difference
+ADDI $1, $0, 10
+ADDI $2, $0, 20
+ADD $3, $1, $2    # Uses forwarded values from $1 and $2
+SUB $4, $3, $1    # Uses forwarded value from $3
+MUL $5, $4, $2    # Uses forwarded value from $4`,
 
 				branch: `# Branch prediction
-                    ADDI $1, $0, 5
-                    ADDI $2, $0, 5
-                    BEQ $1, $2, skip  # Taken ($1 == $2)
-                    ADD $3, $3, $4    # Flushed if mispredicted
-                    skip:
-                    SUB $5, $5, $6`,
+ADDI $1, $0, 5
+ADDI $2, $0, 5
+BEQ $1, $2, skip  # Taken ($1 == $2)
+ADD $3, $3, $4    # Flushed if mispredicted
+skip:
+SUB $5, $5, $6`,
 
 				'mul-latency': `# Multi-cycle execution
-                    # MUL takes multiple cycles in EX
-                    ADD $1, $2, $3
-                    MUL $4, $1, $5    # 6 cycles in EX (default)
-                    ADD $6, $4, $7    # Must wait for MUL to complete`
+# MUL takes multiple cycles in EX
+ADD $1, $2, $3
+MUL $4, $1, $5    # 6 cycles in EX (default)
+ADD $6, $4, $7    # Must wait for MUL to complete`
 			};
 
 			if (examples[name]) {

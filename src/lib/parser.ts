@@ -1,4 +1,4 @@
-import type { Instruction, AluOp, ParseResult, ParseError } from './types';
+import type { Instruction, InstructionType, AluOp, ParseResult, ParseError } from './types';
 
 // R-type: opcode rd, rs1, rs2
 const R_TYPE_OPS = ['ADD', 'SUB', 'MUL', 'AND', 'OR', 'XOR', 'SLT'];
@@ -48,7 +48,10 @@ export function parseProgram(code: string): ParseResult {
 		if (labelMatch) {
 			const labelName = labelMatch[1];
 			if (labels.has(labelName)) {
-				errors.push({ line: lineNum + 1, message: `Duplicate label: ${labelName}` });
+				errors.push({
+					line: lineNum + 1,
+					message: `Duplicate label: ${labelName}`
+				});
 			} else {
 				labels.set(labelName, instrIndex);
 			}
@@ -126,7 +129,10 @@ function parseInstruction(
 	// R-type: ADD rd, rs1, rs2
 	if (R_TYPE_OPS.includes(opcode)) {
 		if (parts.length < 4) {
-			errors.push({ line: lineNum, message: `${opcode} requires 3 operands: rd, rs1, rs2` });
+			errors.push({
+				line: lineNum,
+				message: `${opcode} requires 3 operands: rd, rs1, rs2`
+			});
 			return null;
 		}
 		const rd = normalizeReg(parts[1]);
@@ -147,14 +153,20 @@ function parseInstruction(
 	// I-type ALU: ADDI rd, rs1, imm
 	if (I_TYPE_ALU_OPS.includes(opcode)) {
 		if (parts.length < 4) {
-			errors.push({ line: lineNum, message: `${opcode} requires 3 operands: rd, rs1, imm` });
+			errors.push({
+				line: lineNum,
+				message: `${opcode} requires 3 operands: rd, rs1, imm`
+			});
 			return null;
 		}
 		const rd = normalizeReg(parts[1]);
 		const rs1 = normalizeReg(parts[2]);
 		const imm = parseImmediate(parts[3]);
 		if (imm === null) {
-			errors.push({ line: lineNum, message: `Invalid immediate value: ${parts[3]}` });
+			errors.push({
+				line: lineNum,
+				message: `Invalid immediate value: ${parts[3]}`
+			});
 			return null;
 		}
 		return {
@@ -172,14 +184,20 @@ function parseInstruction(
 	// Load: LW rd, offset(rs1)
 	if (LOAD_OPS.includes(opcode)) {
 		if (parts.length < 3) {
-			errors.push({ line: lineNum, message: `${opcode} requires: rd, offset(rs1)` });
+			errors.push({
+				line: lineNum,
+				message: `${opcode} requires: rd, offset(rs1)`
+			});
 			return null;
 		}
 		const rd = normalizeReg(parts[1]);
 		const memPart = parts.slice(2).join('');
-		const memMatch = memPart.match(/(-?\d+)?\((\w+)\)/);
+		const memMatch = memPart.match(/(-?\d+)?\((\$?\w+)\)/);
 		if (!memMatch) {
-			errors.push({ line: lineNum, message: `Invalid memory operand: ${memPart}` });
+			errors.push({
+				line: lineNum,
+				message: `Invalid memory operand: ${memPart}`
+			});
 			return null;
 		}
 		const imm = memMatch[1] ? parseInt(memMatch[1], 10) : 0;
@@ -198,14 +216,20 @@ function parseInstruction(
 	// Store: SW rs2, offset(rs1)
 	if (STORE_OPS.includes(opcode)) {
 		if (parts.length < 3) {
-			errors.push({ line: lineNum, message: `${opcode} requires: rs2, offset(rs1)` });
+			errors.push({
+				line: lineNum,
+				message: `${opcode} requires: rs2, offset(rs1)`
+			});
 			return null;
 		}
 		const rs2 = normalizeReg(parts[1]);
 		const memPart = parts.slice(2).join('');
-		const memMatch = memPart.match(/(-?\d+)?\((\w+)\)/);
+		const memMatch = memPart.match(/(-?\d+)?\((\$?\w+)\)/);
 		if (!memMatch) {
-			errors.push({ line: lineNum, message: `Invalid memory operand: ${memPart}` });
+			errors.push({
+				line: lineNum,
+				message: `Invalid memory operand: ${memPart}`
+			});
 			return null;
 		}
 		const imm = memMatch[1] ? parseInt(memMatch[1], 10) : 0;
@@ -224,7 +248,10 @@ function parseInstruction(
 	// Branch: BEQ rs1, rs2, label
 	if (BRANCH_OPS.includes(opcode)) {
 		if (parts.length < 4) {
-			errors.push({ line: lineNum, message: `${opcode} requires: rs1, rs2, label` });
+			errors.push({
+				line: lineNum,
+				message: `${opcode} requires: rs1, rs2, label`
+			});
 			return null;
 		}
 		const rs1 = normalizeReg(parts[1]);
@@ -241,7 +268,10 @@ function parseInstruction(
 		};
 	}
 
-	errors.push({ line: lineNum, message: `Unknown instruction: ${opcode}` });
+	errors.push({
+		line: lineNum,
+		message: `Unknown instruction: ${opcode}`
+	});
 	return null;
 }
 

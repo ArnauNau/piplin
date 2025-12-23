@@ -298,7 +298,7 @@ export function simulatePipeline(
 									type: 'raw',
 									cycle,
 									instructionIndex: traceIndex,
-									description: `Load-use hazard: ${source}`,
+									description: `Data (Load-use) hazard: ${source}`,
 									dependsOn: stages.E.traceIndex,
 									register: source
 								};
@@ -312,7 +312,7 @@ export function simulatePipeline(
 									type: 'raw',
 									cycle,
 									instructionIndex: traceIndex,
-									description: `RAW hazard: ${source}`,
+									description: `Data (Read-After-Write) hazard: ${source}`,
 									dependsOn: stages.E.traceIndex,
 									register: source
 								};
