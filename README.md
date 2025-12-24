@@ -38,6 +38,7 @@ Tailor the simulation to your needs through the configuration sidebar:
 - **Language**: TypeScript
 - **Framework**: Svelte
 - **Tooling**: Vite, Prettier, ESLint.
+- **Package Manager**: [Bun](https://bun.sh)
 
 ## Getting Started
 
