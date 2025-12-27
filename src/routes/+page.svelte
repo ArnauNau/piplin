@@ -58,7 +58,7 @@
 
 	function handleResizeLeft(e: MouseEvent) {
 		if (isDraggingLeft) {
-			// clamp between 250px - 700px
+			//clamp between 250px - 700px
 			leftPanelWidth = Math.max(250, Math.min(700, e.clientX));
 		}
 	}

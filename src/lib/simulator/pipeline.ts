@@ -72,6 +72,9 @@ export function simulatePipeline(
 	let pc = 0;
 	let cycle = 1;
 
+	//pending flush flag to defer invalidation until end of cycle
+	let pendingFlush = false;
+
 	const stages: Record<StageName, ActiveStage | null> = {
 		F: null,
 		D: null,
@@ -121,6 +124,7 @@ export function simulatePipeline(
 
 		//clear forwards from last cycle
 		forwardableResults.clear();
+		pendingFlush = false;
 
 		//#region WRITEBACK STAGE
 		if (stages.W && !stages.W.stage.flushed) {
@@ -219,14 +223,13 @@ export function simulatePipeline(
 						};
 
 						if (predicted !== branchTaken) {
-							//flush earlier stages
+							//flush earlier stages (deferred)
 							//F, D are 'younger' than E
+							pendingFlush = true;
 							if (stages.F) {
-								stages.F.stage.flushed = true;
 								prediction.flushCycles++;
 							}
 							if (stages.D) {
-								stages.D.stage.flushed = true;
 								prediction.flushCycles++;
 							}
 
@@ -258,6 +261,19 @@ export function simulatePipeline(
 			const { instr } = stage;
 
 			if (instr) {
+				//check for structural hazard (EX busy in multi-cycle op?)
+				if (stages.E && stages.E.stage.cycleInStage < stages.E.stage.totalCyclesInStage) {
+					decodeStalled = true;
+					hazardInfo = {
+						type: 'structural',
+						cycle,
+						instructionIndex: traceIndex,
+						description: 'Structural Hazard: Unit Busy',
+						dependsOn: stages.E.traceIndex,
+						register: 'ALU'
+					};
+				}
+
 				const sources = getSourceRegisters(instr);
 				for (const source of sources) {
 					//check W hazard
@@ -335,7 +351,7 @@ export function simulatePipeline(
 									type: 'raw',
 									cycle,
 									instructionIndex: traceIndex,
-									description: `RAW hazard: ${source}`,
+									description: `Data (Read-After-Write) hazard: ${source}`,
 									dependsOn: stages.M.traceIndex,
 									register: source
 								};
@@ -351,7 +367,7 @@ export function simulatePipeline(
 									type: 'raw',
 									cycle,
 									instructionIndex: traceIndex,
-									description: `RAW hazard: ${source}`,
+									description: `Data (Read-After-Write) hazard: ${source}`,
 									dependsOn: stages.M.traceIndex,
 									register: source
 								};
@@ -415,6 +431,15 @@ export function simulatePipeline(
 		}
 
 		//#region ADVANCE PIPELINE
+		if (pendingFlush) {
+			if (stages.F) {
+				stages.F.stage.flushed = true;
+			}
+			if (stages.D) {
+				stages.D.stage.flushed = true;
+			}
+		}
+
 		// W stage complete
 		stages.W = null;
 
@@ -440,7 +465,7 @@ export function simulatePipeline(
 		}
 
 		// E -> M
-		if (stages.E) {
+		if (stages.E && !stages.M) {
 			if (stages.E.stage.cycleInStage >= stages.E.stage.totalCyclesInStage) {
 				const memCycles =
 					stages.E.stage.instr?.type === 'load' || stages.E.stage.instr?.type === 'store'
@@ -464,7 +489,7 @@ export function simulatePipeline(
 		}
 
 		// D -> E (if not stalled)
-		if (!decodeStalled && stages.D) {
+		if (!decodeStalled && stages.D && !stages.E) {
 			const instr = stages.D.stage.instr;
 
 			//calculate forwarding
@@ -507,7 +532,7 @@ export function simulatePipeline(
 		}
 
 		// F -> D
-		if (!decodeStalled && stages.F) {
+		if (!decodeStalled && stages.F && !stages.D) {
 			stages.D = {
 				traceIndex: stages.F.traceIndex,
 				stage: {
