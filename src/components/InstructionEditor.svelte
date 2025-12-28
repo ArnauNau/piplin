@@ -34,6 +34,19 @@
 			<button onclick={() => state.loadExample('forwarding')}>Forwarding</button>
 			<button onclick={() => state.loadExample('branch')}>Branch</button>
 			<button onclick={() => state.loadExample('mul-latency')}>MUL Latency</button>
+			<div class="separator"></div>
+			<button class="test-btn" onclick={() => state.loadExample('test-1-ex-running')}
+				>T1 (EX-mid)</button
+			>
+			<button class="test-btn" onclick={() => state.loadExample('test-2-ex-finished')}
+				>T2 (EX-end)</button
+			>
+			<button class="test-btn" onclick={() => state.loadExample('test-3-load-ex')}
+				>T3 (EX-dep-LD)</button
+			>
+			<button class="test-btn" onclick={() => state.loadExample('test-4-mem')}
+				>T4 (M-dep)</button
+			>
 		</div>
 	</div>
 
@@ -88,6 +101,20 @@
 		align-items: center;
 		font-size: 0.75rem;
 		width: 100%;
+		padding-bottom: 0.25rem;
+	}
+
+	.separator {
+		width: 1px;
+		height: 16px;
+		background: var(--border-color);
+		margin: 0 0.25rem;
+	}
+
+	.test-btn {
+		font-family: var(--font-mono);
+		font-size: 0.65rem !important;
+		opacity: 0.9;
 	}
 
 	.examples span {

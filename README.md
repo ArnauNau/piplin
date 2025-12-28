@@ -38,7 +38,7 @@ Tailor the simulation to your needs through the configuration sidebar:
 - **Language**: TypeScript
 - **Framework**: Svelte
 - **Tooling**: Vite, Prettier, ESLint.
-- **Package Manager**: [Bun](https://bun.sh)
+- **Package Manager / Test Runner**: [Bun](https://bun.sh)
 
 ## Getting Started
 
@@ -66,6 +66,14 @@ Format code (mandatory for contributions):
 bunx prettier --write .
 # or
 npx prettier --write .
+```
+
+Run tests:
+
+```sh
+bun run test
+# or
+bun test
 ```
 
 ### Building for Production

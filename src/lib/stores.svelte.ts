@@ -107,7 +107,51 @@ SUB $5, $5, $6`,
 # MUL takes multiple cycles in EX
 ADD $1, $2, $3
 MUL $4, $1, $5    # 6 cycles in EX (default)
-ADD $6, $4, $7    # Must wait for MUL to complete`
+ADD $6, $4, $7    # Must wait for MUL to complete`,
+
+				'test-1-ex-running': `# TEST 1: Dependency on ALU in E (Running)
+# Requires MUL latency > 1 (default is 6)
+# Producer is busy in Execute stage.
+MUL $1, $2, $3
+ADD $4, $1, $5   # Consumer in Decode
+# Behavior:
+# - Always STALL until MUL completes (Structural/RAW)`,
+
+				'test-2-ex-finished': `# TEST 2: Dependency on ALU in E (Finished)
+# Standard 1-cycle ALU latency
+# Producer finishes E same cycle Consumer is in D.
+ADD $1, $2, $3
+SUB $4, $1, $5   # Consumer in Decode
+# Behavior:
+# - Fwd ON: No Stall (Forward EX->EX)
+# - Fwd OFF: Stall until W completes`,
+
+				'test-3-load-ex': `# TEST 3: Dependency on Load in E
+# Producer is Load in Execute stage.
+LW $1, 0($2)
+ADD $3, $1, $4   # Consumer in Decode
+# Behavior:
+# - Fwd ON: Stall 1 cycle (Load-Use hazard)
+# - Fwd OFF: Stall until W completes`,
+
+				'test-4-mem': `# TEST 4: Dependency on Instr in M
+# Producer is in Memory stage.
+ADD $1, $2, $3
+NOP              # Delay slot
+SUB $4, $1, $5   # Consumer in Decode, Producer in M
+# Behavior:
+# - Fwd ON: No Stall (Forward MEM->EX)
+# - Fwd OFF: Stall until W completes`,
+
+				'test-5-wb': `# TEST 5: Dependency on Instr in W
+# Producer is in Writeback stage.
+ADD $1, $2, $3
+NOP
+NOP
+SUB $4, $1, $5   # Consumer in Decode, Producer in W
+# Behavior:
+# - Transparency ON: No Stall
+# - Transparency OFF: Stall 1 cycle`
 			};
 
 			if (examples[name]) {
