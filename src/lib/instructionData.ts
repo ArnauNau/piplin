@@ -57,7 +57,7 @@ export const instructionDocs: Record<string, InstructionDoc> = {
 		name: 'AND',
 		type: 'R',
 		format: 'AND rd, rs1, rs2',
-		description: 'Performs bitwise AND on registers rs1 and rs2 and stores the result in rd.',
+		description: 'Bitwise AND on registers rs1 and rs2 and stores the result in rd.',
 		operation: 'R[rd] ← R[rs1] & R[rs2]',
 		operands: [
 			{ name: 'rd', desc: 'Destination register' },
@@ -70,7 +70,7 @@ export const instructionDocs: Record<string, InstructionDoc> = {
 		name: 'OR',
 		type: 'R',
 		format: 'OR rd, rs1, rs2',
-		description: 'Performs bitwise OR on registers rs1 and rs2 and stores the result in rd.',
+		description: 'Bitwise OR on registers rs1 and rs2 and stores the result in rd.',
 		operation: 'R[rd] ← R[rs1] | R[rs2]',
 		operands: [
 			{ name: 'rd', desc: 'Destination register' },
@@ -83,7 +83,7 @@ export const instructionDocs: Record<string, InstructionDoc> = {
 		name: 'XOR',
 		type: 'R',
 		format: 'XOR rd, rs1, rs2',
-		description: 'Performs bitwise XOR on registers rs1 and rs2 and stores the result in rd.',
+		description: 'Bitwise XOR on registers rs1 and rs2 and stores the result in rd.',
 		operation: 'R[rd] ← R[rs1] ^ R[rs2]',
 		operands: [
 			{ name: 'rd', desc: 'Destination register' },
@@ -122,7 +122,8 @@ export const instructionDocs: Record<string, InstructionDoc> = {
 		name: 'ANDI',
 		type: 'I',
 		format: 'ANDI rd, rs1, imm',
-		description: 'Performs bitwise AND on register rs1 and an immediate value.',
+		description: 'Bitwise AND on register rs1 and an immediate value.',
+		operation: 'R[rd] ← R[rs1] & imm',
 		operands: [
 			{ name: 'rd', desc: 'Destination register' },
 			{ name: 'rs1', desc: 'Source register 1' },
@@ -134,7 +135,8 @@ export const instructionDocs: Record<string, InstructionDoc> = {
 		name: 'ORI',
 		type: 'I',
 		format: 'ORI rd, rs1, imm',
-		description: 'Performs bitwise OR on register rs1 and an immediate value.',
+		description: 'Bitwise OR on register rs1 and an immediate value.',
+		operation: 'R[rd] ← R[rs1] | imm',
 		operands: [
 			{ name: 'rd', desc: 'Destination register' },
 			{ name: 'rs1', desc: 'Source register 1' },
@@ -146,7 +148,8 @@ export const instructionDocs: Record<string, InstructionDoc> = {
 		name: 'XORI',
 		type: 'I',
 		format: 'XORI rd, rs1, imm',
-		description: 'Performs bitwise XOR on register rs1 and an immediate value.',
+		description: 'Bitwise XOR on register rs1 and an immediate value.',
+		operation: 'R[rd] ← R[rs1] ^ imm',
 		operands: [
 			{ name: 'rd', desc: 'Destination register' },
 			{ name: 'rs1', desc: 'Source register 1' },
@@ -158,7 +161,8 @@ export const instructionDocs: Record<string, InstructionDoc> = {
 		name: 'SLTI',
 		type: 'I',
 		format: 'SLTI rd, rs1, imm',
-		description: 'Sets rd to 1 if rs1 < imm, otherwise 0.',
+		description: 'Set on Less Than Immediate. Sets rd to 1 if rs1 < imm, otherwise 0.',
+		operation: 'R[rd] ← (R[rs1] < imm) ? 1 : 0',
 		operands: [
 			{ name: 'rd', desc: 'Destination register' },
 			{ name: 'rs1', desc: 'Source register 1' },
@@ -170,7 +174,7 @@ export const instructionDocs: Record<string, InstructionDoc> = {
 		name: 'LW',
 		type: 'I',
 		format: 'LW rd, offset(rs1)',
-		description: 'Loads a word (integer) from memory at address rs1 + offset into rd.',
+		description: 'Loads a word from memory at address rs1 + offset into rd.',
 		operation: 'R[rd] ← Mem[R[rs1] + offset]',
 		operands: [
 			{ name: 'rd', desc: 'Destination register' },
@@ -207,7 +211,7 @@ export const instructionDocs: Record<string, InstructionDoc> = {
 		name: 'SW',
 		type: 'S',
 		format: 'SW rs2, offset(rs1)',
-		description: 'Stores word from register rs2 into memory at address rs1 + offset.',
+		description: 'Stores word from register rs2 into memory at address (rs1 + offset).',
 		operation: 'Mem[R[rs1] + offset] ← R[rs2]',
 		operands: [
 			{ name: 'rs2', desc: 'Source register (value to store)' },
@@ -271,6 +275,7 @@ export const instructionDocs: Record<string, InstructionDoc> = {
 		type: 'B',
 		format: 'BLT rs1, rs2, label',
 		description: 'Branch if Less Than. Jumps to label if rs1 < rs2.',
+		operation: 'if (R[rs1] < R[rs2]) PC ← label',
 		operands: [
 			{ name: 'rs1', desc: 'Source register 1' },
 			{ name: 'rs2', desc: 'Source register 2' },
@@ -283,6 +288,7 @@ export const instructionDocs: Record<string, InstructionDoc> = {
 		type: 'B',
 		format: 'BGE rs1, rs2, label',
 		description: 'Branch if Greater or Equal. Jumps to label if rs1 >= rs2.',
+		operation: 'if (R[rs1] >= R[rs2]) PC ← label',
 		operands: [
 			{ name: 'rs1', desc: 'Source register 1' },
 			{ name: 'rs2', desc: 'Source register 2' },

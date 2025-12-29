@@ -9,8 +9,8 @@
 
 	const appState = getAppState();
 
-	let panelOpen = $state(false);
-	let docsOpen = $state(false);
+	let panelOpen = $state(true);
+	let docsOpen = $state(true);
 
 	let selectedInstruction = $state<string | null>(null);
 	let selectedTraceEntry = $state<TraceEntry | null>(null);

@@ -291,7 +291,7 @@ export function simulatePipeline(
 								type: 'structural',
 								cycle,
 								instructionIndex: traceIndex,
-								description: 'Wait for WB on ${source}',
+								description: `Wait for WB on ${source}`,
 								dependsOn: stages.W.traceIndex,
 								register: source
 							};

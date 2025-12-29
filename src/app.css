@@ -16,8 +16,9 @@
 	/* Accent - subtle blue */
 	--accent-color: #4a9eff;
 	--accent-hover: #6bb3ff;
+	--accent-light: #8cc5ff;
 
-	/* Stage colors - keep these distinct for the pipeline */
+	/* Stage colors for the pipeline */
 	--stage-fetch: #3498db;
 	--stage-decode: #2ecc71;
 	--stage-execute: #e67e22;
@@ -25,6 +26,7 @@
 	--stage-writeback: #e74c3c;
 	--stage-stall: #4a4a4a;
 	--stage-bubble: #2a2a2a;
+	--forwarding-indicator: #fff200;
 
 	/* Error colors */
 	--error-color: #ff6b6b;
@@ -50,6 +52,7 @@
 		--stage-stall: #bdc3c7;
 		--stage-bubble: #ecf0f1;
 		--error-bg: rgba(255, 107, 107, 0.05);
+		--accent-light: #3388dd;
 	}
 }
 

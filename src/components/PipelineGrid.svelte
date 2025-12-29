@@ -282,7 +282,7 @@
 	}
 
 	.stage-cell.has-forwarding {
-		box-shadow: inset 0 0 0 1px var(--accent-color);
+		box-shadow: inset 0 0 0 2px var(--forwarding-indicator);
 	}
 
 	.empty-state {

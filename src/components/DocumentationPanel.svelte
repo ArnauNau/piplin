@@ -289,7 +289,6 @@
 	.back-btn {
 		padding: 0.25rem 0.5rem;
 		font-size: 0.8rem;
-		color: var(--accent-light);
 		background: none;
 		border: none;
 		cursor: pointer;
@@ -482,7 +481,6 @@
 		width: 60px;
 		font-family: var(--font-mono);
 		font-weight: 600;
-		color: var(--accent-light);
 	}
 
 	.operand-desc {
@@ -500,7 +498,7 @@
 	.hazard-title {
 		margin: 0 0 0.5rem 0;
 		font-size: 0.75rem;
-		color: var(--accent-light);
+		font-weight: 600;
 	}
 
 	.hazard-list {
@@ -540,6 +538,6 @@
 		font-weight: 600;
 		color: var(--text-primary);
 		font-family: var(--font-mono);
-		border: 1x solid rgba(0, 0, 0, 0.1);
+		border: 1px solid rgba(0, 0, 0, 0.1);
 	}
 </style>

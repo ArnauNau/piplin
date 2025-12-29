@@ -83,6 +83,12 @@
 			<span class="stage-badge flushed">~~</span>
 			<span class="stage-label">Flush</span>
 		</div>
+		<span class="separator">|</span>
+		<div class="credits">
+			made by <a href="https://a.rnau.me" target="_blank" rel="noopener noreferrer"
+				>a.rnau.me</a
+			>
+		</div>
 	</div>
 </div>
 
@@ -113,7 +119,7 @@
 	}
 
 	.label {
-		color: var(--text-tertiary);
+		color: var(--text-secondary);
 	}
 
 	.value {
@@ -121,7 +127,7 @@
 	}
 
 	.separator {
-		color: var(--border-color);
+		color: var(--text-secondary);
 	}
 
 	.stats {
@@ -171,5 +177,22 @@
 	.stage-label {
 		font-size: 0.65rem;
 		color: var(--text-secondary);
+	}
+
+	.credits {
+		color: var(--text-secondary);
+		font-size: 0.65rem;
+	}
+
+	.credits a {
+		color: inherit;
+		text-decoration: none;
+		border-bottom: 1px dotted currentColor;
+		transition: color 0.2s;
+	}
+
+	.credits a:hover {
+		color: var(--text-primary);
+		border-bottom-style: solid;
 	}
 </style>
