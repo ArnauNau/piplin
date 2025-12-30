@@ -572,7 +572,20 @@ export function simulatePipeline(
 					flushed: false
 				}
 			};
-			pc++;
+
+			//determine next PC
+			let nextPc = pc + 1;
+			const currentInstr = instructions[pc];
+			if (currentInstr.type === 'branch') {
+				const predictedTaken = predictor.predict(currentInstr.index);
+				if (predictedTaken && currentInstr.targetLabel) {
+					const targetIndex = labels.get(currentInstr.targetLabel);
+					if (targetIndex !== undefined) {
+						nextPc = targetIndex;
+					}
+				}
+			}
+			pc = nextPc;
 		}
 
 		cycle++;
