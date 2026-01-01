@@ -83,12 +83,19 @@
 			<span class="stage-badge flushed">~~</span>
 			<span class="stage-label">Flush</span>
 		</div>
+		{#if appState.config.forwarding.exToEx || appState.config.forwarding.memToEx}
+			<div class="legend-item">
+				<span class="stage-badge forwarded"></span>
+				<span class="stage-label">Forwarded</span>
+			</div>
+		{/if}
 		<span class="separator">|</span>
 		<div class="credits">
-			made by <a href="https://a.rnau.me" target="_blank" rel="noopener noreferrer"
-				>a.rnau.me</a
-			>
+			made by
+			<a href="https://a.rnau.me" target="_blank" rel="noopener noreferrer"> Nau </a>
 		</div>
+		<span class="separator">|</span>
+		<div class="credits">0.2.0</div>
 	</div>
 </div>
 
@@ -172,6 +179,10 @@
 		background: var(--stage-bubble);
 		color: var(--text-tertiary);
 		text-decoration: line-through;
+	}
+
+	.stage-badge.forwarded {
+		box-shadow: inset 0 0 0 2px var(--forwarding-indicator);
 	}
 
 	.stage-label {

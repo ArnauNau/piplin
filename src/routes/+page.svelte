@@ -42,7 +42,7 @@
 		}
 	}
 
-	let leftPanelWidth = $state(350);
+	let leftPanelWidth = $state(400);
 	let rightPanelWidth = $state(500);
 	let isDraggingLeft = $state(false);
 	let isDraggingRight = $state(false);
