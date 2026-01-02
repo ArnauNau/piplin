@@ -95,7 +95,7 @@
 			<a href="https://a.rnau.me" target="_blank" rel="noopener noreferrer"> Nau </a>
 		</div>
 		<span class="separator">|</span>
-		<div class="credits">0.2.0</div>
+		<div class="credits">0.2.1</div>
 	</div>
 </div>
 

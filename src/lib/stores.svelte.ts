@@ -17,11 +17,13 @@ export function createAppState() {
 	let config = $state<Config>(defaultConfig());
 	let result = $state<SimulationResult | null>(null);
 	let parseErrors = $state<Array<{ line: number; message: string }>>([]);
+	let instructions = $state<import('./types').Instruction[]>([]);
 
-	// Derived: run simulation when code or config changes
+	//run simulation when code or config changes
 	const simulate = () => {
 		const parsed = parseProgram(code);
 		parseErrors = parsed.errors;
+		instructions = parsed.instructions;
 
 		if (parsed.errors.length === 0 && parsed.instructions.length > 0) {
 			result = simulatePipeline(parsed.instructions, parsed.labels, config);
@@ -30,7 +32,7 @@ export function createAppState() {
 		}
 	};
 
-	// Run initial simulation
+	//run initial simulation
 	simulate();
 
 	return {
@@ -55,6 +57,9 @@ export function createAppState() {
 		},
 		get parseErrors() {
 			return parseErrors;
+		},
+		get instructions() {
+			return instructions;
 		},
 
 		updateConfig(updates: Partial<Config>) {
@@ -141,17 +146,7 @@ NOP              # Delay slot
 SUB $4, $1, $5   # Consumer in Decode, Producer in M
 # Behavior:
 # - Fwd ON: No Stall (Forward MEM->EX)
-# - Fwd OFF: Stall until W completes`,
-
-				'test-5-wb': `# TEST 5: Dependency on Instr in W
-# Producer is in Writeback stage.
-ADD $1, $2, $3
-NOP
-NOP
-SUB $4, $1, $5   # Consumer in Decode, Producer in W
-# Behavior:
-# - Transparency ON: No Stall
-# - Transparency OFF: Stall 1 cycle`
+# - Fwd OFF: Stall until W completes`
 			};
 
 			if (examples[name]) {

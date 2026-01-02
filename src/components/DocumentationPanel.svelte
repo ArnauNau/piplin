@@ -6,8 +6,8 @@
 		selectedOp = $bindable(),
 		selectedStage = $bindable(),
 		selectedTraceEntry = null,
-		selectedTraceIndex = -1,
 		hazards = [],
+		trace = [],
 		highlightedRegisters = $bindable(new Map())
 	} = $props<{
 		selectedOp: string | null;
@@ -19,6 +19,7 @@
 		selectedTraceEntry?: TraceEntry | null;
 		selectedTraceIndex?: number;
 		hazards?: HazardInfo[];
+		trace?: TraceEntry[];
 		highlightedRegisters?: Map<string, string>;
 	}>();
 
@@ -35,13 +36,49 @@
 
 	//compute related hazards
 	let relatedHazards = $derived.by(() => {
-		if (selectedTraceIndex === -1) return { causedBy: [], causedTo: [] };
+		//selected TraceEntry -> show ALLall hazards related to that static instruction.
+		//TODO: when dynamic execution is implemented, show hazards only related to that step / context.
+		//static -> grouping by instruction
+		if (!selectedTraceEntry || !trace) {
+			return { causedBy: [], causedTo: [] };
+		}
+
+		const staticIndex = selectedTraceEntry.instruction.index;
+
+		// Deduplication helper
+		const uniqueHazards = (hazards: HazardInfo[]) => {
+			const seen = new Set<string>();
+			return hazards.filter((h) => {
+				// Create a unique key for the hazard (ignoring specific dynamic cycle/index)
+				// We care about the TYPE, DESCRIPTION, and CAUSING REGISTER if applicable.
+				// We do NOT include the dynamic instruction index in the key, effectively merging duplicates from loops.
+				const key = `${h.type}|${h.description}|${h.register ?? ''}|${h.dependsOn !== undefined ? trace![h.dependsOn]?.instruction.index : ''}`;
+				if (seen.has(key)) {
+					return false;
+				}
+				seen.add(key);
+				return true;
+			});
+		};
 
 		return {
 			//hazards where this instruction is the VICTIM (it stalls)
-			causedBy: hazards.filter((h: HazardInfo) => h.instructionIndex === selectedTraceIndex),
+			causedBy: uniqueHazards(
+				hazards.filter((h: HazardInfo) => {
+					const entry = trace[h.instructionIndex];
+					return entry && entry.instruction.index === staticIndex;
+				})
+			),
 			//hazards where this instruction is the AGGRESSOR (it stalls someone else)
-			causedTo: hazards.filter((h: HazardInfo) => h.dependsOn === selectedTraceIndex)
+			causedTo: uniqueHazards(
+				hazards.filter((h: HazardInfo) => {
+					if (h.dependsOn === undefined) {
+						return false;
+					}
+					const entry = trace[h.dependsOn];
+					return entry && entry.instruction.index === staticIndex;
+				})
+			)
 		};
 	});
 
@@ -197,7 +234,11 @@
 												{hazard.description}
 											</span>
 											<span class="hazard-desc">
-												Caused by Instr #{hazard.dependsOn}
+												Caused by Instr #{trace &&
+												hazard.dependsOn !== undefined &&
+												trace[hazard.dependsOn]
+													? trace[hazard.dependsOn].instruction.index
+													: '?'}
 												{#if hazard.register}
 													(Register:
 													<span
@@ -227,7 +268,11 @@
 												{hazard.description}
 											</span>
 											<span class="hazard-desc">
-												Stalled Instr #{hazard.instructionIndex}
+												Stalled Instr #{trace &&
+												trace[hazard.instructionIndex]
+													? trace[hazard.instructionIndex].instruction
+															.index
+													: '?'}
 											</span>
 										</li>
 									{/each}

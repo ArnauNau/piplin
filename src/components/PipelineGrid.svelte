@@ -4,10 +4,16 @@
 
 	const appState = getAppState();
 
-	let { onInspect, onInspectStage, highlightedRegisters } = $props<{
+	let {
+		onInspect,
+		onInspectStage,
+		highlightedRegisters,
+		selectedTraceEntry = null
+	} = $props<{
 		onInspect: (entry: TraceEntry, index: number) => void;
 		onInspectStage?: (stage: string, cycle: number, entry: CycleEntry) => void;
 		highlightedRegisters: Map<string, string>;
+		selectedTraceEntry?: TraceEntry | null;
 	}>();
 
 	const stageColors: Record<string, string> = {
@@ -72,12 +78,12 @@
 					</tr>
 				</thead>
 				<tbody>
-					{#each trace as row, traceIdx}
+					{#each appState.instructions as instr, instrIndex}
 						<!-- Label row -->
-						{#if row.label}
+						{#if instr.label}
 							<tr class="label-row">
 								<td class="instr-cell label-cell">
-									{row.label}
+									{instr.label}:
 								</td>
 								<td colspan={totalCycles} class="label-line"></td>
 							</tr>
@@ -88,17 +94,30 @@
 							<td class="instr-cell">
 								<button
 									class="instr-btn"
-									title="View documentation for {row.instruction.opcode}"
-									onclick={() => handleInstrClick(row, traceIdx)}
+									class:selected={selectedTraceEntry?.instruction.index ===
+										instr.index}
+									title="View documentation for {instr.opcode}"
+									onclick={() => {
+										/* Use the first trace entry for this instruction if available for context */
+										const trace = appState.result?.trace;
+										if (trace) {
+											const traceIdx = trace.findIndex(
+												(t) => t.instruction.index === instr.index
+											);
+											if (traceIdx !== -1) {
+												handleInstrClick(trace[traceIdx], traceIdx);
+											}
+										}
+									}}
 								>
 									<span class="instr-num">
-										{traceIdx}
+										{instrIndex}
 									</span>
 									<span class="instr-text">
 										{#if highlightedRegisters.size > 0}
-											{@const tokens = truncateInstr(
-												row.instruction.raw ?? ''
-											).split(/([,\s()]+)/)}
+											{@const tokens = truncateInstr(instr.raw ?? '').split(
+												/([,\s()]+)/
+											)}
 											{#each tokens as token}
 												{@const color = highlightedRegisters.get(token)}
 												{#if color}
@@ -113,13 +132,30 @@
 												{/if}
 											{/each}
 										{:else}
-											{truncateInstr(row.instruction.raw ?? '')}
+											{truncateInstr(instr.raw ?? '')}
 										{/if}
 									</span>
 								</button>
 							</td>
 
-							{#each row.timeline as entry, cycleIdx}
+							{#each Array(totalCycles) as _, cycleIdx}
+								{@const activeEntries = trace.filter(
+									(t) =>
+										t.instruction.index === instr.index &&
+										t.timeline[cycleIdx] &&
+										t.timeline[cycleIdx].stage !== 'bubble'
+								)}
+								{@const entry =
+									activeEntries.length > 0
+										? activeEntries[activeEntries.length - 1].timeline[cycleIdx]
+										: { stage: 'bubble' as const }}
+								{@const traceEntry =
+									activeEntries.length > 0
+										? activeEntries[activeEntries.length - 1]
+										: undefined}
+								{@const traceIdx =
+									activeEntries.length > 0 ? trace.indexOf(traceEntry!) : -1}
+
 								<td
 									class="stage-cell"
 									class:stall={entry.stage === 'stall'}
@@ -128,8 +164,14 @@
 									class:has-forwarding={entry.forwardingFrom &&
 										entry.forwardingFrom.length > 0}
 									class:clickable={entry.stage !== 'bubble'}
-									style="--stage-color: {stageColors[entry.stage]}"
-									onclick={() => handleStageClick(entry, cycleIdx)}
+									style={entry.stage !== 'bubble'
+										? `--stage-color: ${stageColors[entry.stage]}`
+										: ''}
+									onclick={() => {
+										if (entry.stage !== 'bubble' && traceEntry) {
+											handleStageClick(entry, cycleIdx);
+										}
+									}}
 								>
 									{formatCell(entry)}
 								</td>

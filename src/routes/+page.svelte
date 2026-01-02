@@ -135,6 +135,7 @@
 				onInspect={handleInstructionSelect}
 				onInspectStage={handleStageSelect}
 				{highlightedRegisters}
+				{selectedTraceEntry}
 			/>
 		</div>
 
@@ -162,6 +163,7 @@
 						{selectedTraceEntry}
 						{selectedTraceIndex}
 						hazards={appState.result?.hazards ?? []}
+						trace={appState.result?.trace ?? []}
 					/>
 				</div>
 				<button
