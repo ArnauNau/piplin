@@ -1,13 +1,13 @@
 <script lang="ts">
-	import { instructionDocs, getAllOps, type InstructionDoc } from '$lib/instructionData';
-	import type { CycleEntry, HazardInfo, TraceEntry } from '$lib/types';
+	import { instructionDocs, getAllOps } from '$lib/instructionData';
+	import type { CycleEntry, HazardInfo, ExecutionInstance, ExecutionId } from '$lib/types';
 
 	let {
 		selectedOp = $bindable(),
 		selectedStage = $bindable(),
 		selectedTraceEntry = null,
 		hazards = [],
-		trace = [],
+		instanceMap = new Map(),
 		highlightedRegisters = $bindable(new Map())
 	} = $props<{
 		selectedOp: string | null;
@@ -16,10 +16,10 @@
 			cycle: number;
 			entry: CycleEntry;
 		} | null;
-		selectedTraceEntry?: TraceEntry | null;
+		selectedTraceEntry?: ExecutionInstance | null;
 		selectedTraceIndex?: number;
 		hazards?: HazardInfo[];
-		trace?: TraceEntry[];
+		instanceMap?: Map<ExecutionId, ExecutionInstance>;
 		highlightedRegisters?: Map<string, string>;
 	}>();
 
@@ -36,23 +36,26 @@
 
 	//compute related hazards
 	let relatedHazards = $derived.by(() => {
-		//selected TraceEntry -> show ALLall hazards related to that static instruction.
-		//TODO: when dynamic execution is implemented, show hazards only related to that step / context.
+		//selected TraceEntry -> show all hazards related to that static instruction.
 		//static -> grouping by instruction
-		if (!selectedTraceEntry || !trace) {
+		if (!selectedTraceEntry || !instanceMap) {
 			return { causedBy: [], causedTo: [] };
 		}
 
 		const staticIndex = selectedTraceEntry.instruction.index;
 
 		// Deduplication helper
-		const uniqueHazards = (hazards: HazardInfo[]) => {
+		const uniqueHazards = (hazardList: HazardInfo[]) => {
 			const seen = new Set<string>();
-			return hazards.filter((h) => {
+			return hazardList.filter((h) => {
 				// Create a unique key for the hazard (ignoring specific dynamic cycle/index)
 				// We care about the TYPE, DESCRIPTION, and CAUSING REGISTER if applicable.
-				// We do NOT include the dynamic instruction index in the key, effectively merging duplicates from loops.
-				const key = `${h.type}|${h.description}|${h.register ?? ''}|${h.dependsOn !== undefined ? trace![h.dependsOn]?.instruction.index : ''}`;
+				// We do NOT include the dynamic execution ID in the key, effectively merging duplicates from loops.
+				const dependsOnInstance =
+					h.dependsOnExecution !== undefined
+						? instanceMap.get(h.dependsOnExecution)
+						: undefined;
+				const key = `${h.type}|${h.description}|${h.register ?? ''}|${dependsOnInstance?.instruction.index ?? ''}`;
 				if (seen.has(key)) {
 					return false;
 				}
@@ -65,17 +68,17 @@
 			//hazards where this instruction is the VICTIM (it stalls)
 			causedBy: uniqueHazards(
 				hazards.filter((h: HazardInfo) => {
-					const entry = trace[h.instructionIndex];
+					const entry = instanceMap.get(h.executionId);
 					return entry && entry.instruction.index === staticIndex;
 				})
 			),
 			//hazards where this instruction is the AGGRESSOR (it stalls someone else)
 			causedTo: uniqueHazards(
 				hazards.filter((h: HazardInfo) => {
-					if (h.dependsOn === undefined) {
+					if (h.dependsOnExecution === undefined) {
 						return false;
 					}
-					const entry = trace[h.dependsOn];
+					const entry = instanceMap.get(h.dependsOnExecution);
 					return entry && entry.instruction.index === staticIndex;
 				})
 			)
@@ -172,7 +175,7 @@
 										{fwd.register}
 									</span>
 									<span class="operand-desc">
-										Forwarded from {fwd.fromStage} (Instr #{fwd.fromInstruction})
+										Forwarded from {fwd.fromStage} (Exec #{fwd.fromExecution})
 									</span>
 								</li>
 							{/each}
@@ -234,10 +237,11 @@
 												{hazard.description}
 											</span>
 											<span class="hazard-desc">
-												Caused by Instr #{trace &&
-												hazard.dependsOn !== undefined &&
-												trace[hazard.dependsOn]
-													? trace[hazard.dependsOn].instruction.index
+												Caused by Instr #{hazard.dependsOnExecution !==
+													undefined &&
+												instanceMap.get(hazard.dependsOnExecution)
+													? instanceMap.get(hazard.dependsOnExecution)
+															?.instruction.index
 													: '?'}
 												{#if hazard.register}
 													(Register:
@@ -268,10 +272,9 @@
 												{hazard.description}
 											</span>
 											<span class="hazard-desc">
-												Stalled Instr #{trace &&
-												trace[hazard.instructionIndex]
-													? trace[hazard.instructionIndex].instruction
-															.index
+												Stalled Instr #{instanceMap.get(hazard.executionId)
+													? instanceMap.get(hazard.executionId)
+															?.instruction.index
 													: '?'}
 											</span>
 										</li>

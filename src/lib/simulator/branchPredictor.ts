@@ -1,16 +1,13 @@
 import type { BranchPredictorType, BranchPrediction } from '../types';
 
-// 2-bit saturating counter states
 type TwoBitState = 'strongly-not-taken' | 'weakly-not-taken' | 'weakly-taken' | 'strongly-taken';
 
-// Branch predictor interface
 export interface BranchPredictor {
 	predict(pc: number): boolean;
 	update(pc: number, taken: boolean): void;
 	getState(): Map<number, unknown>;
 }
 
-// No branch prediction - always predict not taken
 export class NoPrediction implements BranchPredictor {
 	predict(_pc: number): boolean {
 		return false;
@@ -25,8 +22,6 @@ export class NoPrediction implements BranchPredictor {
 	}
 }
 
-// 1-bit branch predictor
-// Remembers last outcome for each branch
 export class OneBitPredictor implements BranchPredictor {
 	private state: Map<number, boolean>;
 	private defaultPrediction: boolean;
@@ -49,7 +44,6 @@ export class OneBitPredictor implements BranchPredictor {
 	}
 }
 
-// 2-bit saturating counter branch predictor
 export class TwoBitPredictor implements BranchPredictor {
 	private state: Map<number, TwoBitState>;
 	private defaultState: TwoBitState;
@@ -101,7 +95,6 @@ export class TwoBitPredictor implements BranchPredictor {
 	}
 }
 
-// Create a branch predictor based on type
 export function createBranchPredictor(
 	type: BranchPredictorType,
 	initialPrediction: 'taken' | 'not-taken' = 'not-taken'
@@ -116,7 +109,6 @@ export function createBranchPredictor(
 	}
 }
 
-// Record a branch prediction result
 export function recordPrediction(
 	execId: number,
 	predicted: boolean,

@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { getAppState } from '$lib/stores.svelte';
-	import type { CycleEntry, StageName, TraceEntry } from '$lib/types';
+	import type { CycleEntry, ExecutionInstance } from '$lib/types';
 
 	const appState = getAppState();
 
@@ -10,10 +10,10 @@
 		highlightedRegisters,
 		selectedTraceEntry = null
 	} = $props<{
-		onInspect: (entry: TraceEntry, index: number) => void;
+		onInspect: (entry: ExecutionInstance, index: number) => void;
 		onInspectStage?: (stage: string, cycle: number, entry: CycleEntry) => void;
 		highlightedRegisters: Map<string, string>;
-		selectedTraceEntry?: TraceEntry | null;
+		selectedTraceEntry?: ExecutionInstance | null;
 	}>();
 
 	const stageColors: Record<string, string> = {
@@ -47,7 +47,7 @@
 		return clean;
 	}
 
-	function handleInstrClick(entry: TraceEntry, index: number) {
+	function handleInstrClick(entry: ExecutionInstance, index: number) {
 		if (onInspect) {
 			onInspect(entry, index);
 		}
@@ -98,7 +98,7 @@
 										instr.index}
 									title="View documentation for {instr.opcode}"
 									onclick={() => {
-										/* Use the first trace entry for this instruction if available for context */
+										/* use first trace entry for this instruction if available for context */
 										const trace = appState.result?.trace;
 										if (trace) {
 											const traceIdx = trace.findIndex(
@@ -145,36 +145,56 @@
 										t.timeline[cycleIdx] &&
 										t.timeline[cycleIdx].stage !== 'bubble'
 								)}
-								{@const entry =
-									activeEntries.length > 0
-										? activeEntries[activeEntries.length - 1].timeline[cycleIdx]
-										: { stage: 'bubble' as const }}
-								{@const traceEntry =
-									activeEntries.length > 0
-										? activeEntries[activeEntries.length - 1]
-										: undefined}
-								{@const traceIdx =
-									activeEntries.length > 0 ? trace.indexOf(traceEntry!) : -1}
 
-								<td
-									class="stage-cell"
-									class:stall={entry.stage === 'stall'}
-									class:bubble={entry.stage === 'bubble'}
-									class:flushed={entry.flushed}
-									class:has-forwarding={entry.forwardingFrom &&
-										entry.forwardingFrom.length > 0}
-									class:clickable={entry.stage !== 'bubble'}
-									style={entry.stage !== 'bubble'
-										? `--stage-color: ${stageColors[entry.stage]}`
-										: ''}
-									onclick={() => {
-										if (entry.stage !== 'bubble' && traceEntry) {
-											handleStageClick(entry, cycleIdx);
-										}
-									}}
-								>
-									{formatCell(entry)}
-								</td>
+								{#if activeEntries.length > 1}
+									<!-- Overlapping stages: show stacked mini-cells -->
+									<td class="stage-cell overlapping clickable">
+										<div class="overlap-container">
+											{#each activeEntries as activeEntry}
+												{@const cycleEntry = activeEntry.timeline[cycleIdx]}
+												<button
+													class="mini-stage"
+													class:flushed={cycleEntry.flushed}
+													style="background-color: {stageColors[
+														cycleEntry.stage
+													]}"
+													title="Iteration {activeEntry.iteration}"
+													onclick={() =>
+														handleStageClick(cycleEntry, cycleIdx)}
+												>
+													{formatCell(cycleEntry)}
+												</button>
+											{/each}
+										</div>
+									</td>
+								{:else}
+									{@const entry =
+										activeEntries.length > 0
+											? activeEntries[0].timeline[cycleIdx]
+											: { stage: 'bubble' as const }}
+									{@const traceEntry =
+										activeEntries.length > 0 ? activeEntries[0] : undefined}
+
+									<td
+										class="stage-cell"
+										class:stall={entry.stage === 'stall'}
+										class:bubble={entry.stage === 'bubble'}
+										class:flushed={entry.flushed}
+										class:has-forwarding={entry.forwardingFrom &&
+											entry.forwardingFrom.length > 0}
+										class:clickable={entry.stage !== 'bubble'}
+										style={entry.stage !== 'bubble'
+											? `--stage-color: ${stageColors[entry.stage]}`
+											: ''}
+										onclick={() => {
+											if (entry.stage !== 'bubble' && traceEntry) {
+												handleStageClick(entry, cycleIdx);
+											}
+										}}
+									>
+										{formatCell(entry)}
+									</td>
+								{/if}
 							{/each}
 						</tr>
 					{/each}
@@ -355,5 +375,43 @@
 		padding: 0 1px;
 		color: var(--text-primary);
 		font-weight: bold;
+	}
+
+	/* Overlapping stages styles */
+	.stage-cell.overlapping {
+		padding: 1px;
+		background: var(--bg-tertiary);
+	}
+
+	.overlap-container {
+		display: flex;
+		flex-direction: column;
+		gap: 1px;
+		height: 100%;
+		justify-content: center;
+	}
+
+	.mini-stage {
+		display: block;
+		width: 100%;
+		padding: 1px 3px;
+		border: none;
+		border-radius: 2px;
+		font-size: 0.55rem;
+		font-weight: 600;
+		font-family: var(--font-mono);
+		color: white;
+		text-align: center;
+		cursor: pointer;
+		line-height: 1.2;
+	}
+
+	.mini-stage:hover {
+		opacity: 0.85;
+	}
+
+	.mini-stage.flushed {
+		opacity: 0.5;
+		text-decoration: line-through;
 	}
 </style>
