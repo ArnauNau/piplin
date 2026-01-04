@@ -206,14 +206,14 @@ describe('Pipeline', () => {
 					);
 					const nextEntry = result.trace[branchIndex + 1];
 
-					// Predict Taken -> Expect Target Next
+					//predict Taken -> expect Target next
 					expect(nextEntry).toBeDefined();
 					expect(nextEntry.instruction.raw).toContain(scenario.targetInstr);
 
-					const isCorrect = scenario.shouldTakeBranch === true; // Predict Taken == Actual Taken
+					const isCorrect = scenario.shouldTakeBranch === true; //predict Taken == actual Taken
 					const wasFlushed = nextEntry.timeline.some((t) => t.flushed);
 
-					// If Correct (Taken), NOT Flushed. If Incorrect (Not Taken), Flushed.
+					//if correct (Taken), NOT Flushed. If incorrect (Not Taken), Flushed.
 					expect(wasFlushed).toBe(!isCorrect);
 				});
 
@@ -228,17 +228,141 @@ describe('Pipeline', () => {
 					);
 					const nextEntry = result.trace[branchIndex + 1];
 
-					// Predict Not Taken -> Expect Fallthrough Next
+					//predict Not Taken -> expect Fallthrough next
 					expect(nextEntry).toBeDefined();
 					expect(nextEntry.instruction.raw).toContain(scenario.fallthroughInstr);
 
-					const isCorrect = scenario.shouldTakeBranch === false; // Predict NT == Actual NT
+					const isCorrect = scenario.shouldTakeBranch === false; //predict NT == actual NT
 					const wasFlushed = nextEntry.timeline.some((t) => t.flushed);
 
-					// If Correct (Not Taken), NOT Flushed. If Incorrect (Taken), Flushed.
+					//if correct (NT), NOT Flushed. If incorrect (Taken), Flushed.
 					expect(wasFlushed).toBe(!isCorrect);
 				});
 			});
+		});
+
+		it('should correctly simulate all stages for a loop with branch prediction', () => {
+			const code = `
+				ADDI $1, $0, 5
+				second:
+				ADDI $2, $2, 5
+				BEQ $1, $2, second
+				ADD $3, $3, $4
+				SUB $5, $5, $2
+				ADD $3, $3, $3
+			`;
+
+			const result = runSimulation(code, {
+				branchPredictor: '1bit',
+				predictorInitial: 'not-taken',
+				latencies: { alu: 1, mul: 1, mem: 1 },
+				forwarding: { exToEx: true, memToEx: true }
+			});
+
+			//verify we have the expected number of trace entries
+			//first iteration: ADDI $1, ADDI $2 (first time), BEQ, ADD (fetched but flushed), ADDI $2 (second time), BEQ (second time), ADD (correct)
+			expect(result.trace.length).toBeGreaterThan(5);
+
+			//find all instructions by their raw text
+			const addi1Entries = result.trace.filter((t) =>
+				t.instruction.raw.includes('ADDI $1, $0, 5')
+			);
+			const addi2Entries = result.trace.filter((t) =>
+				t.instruction.raw.includes('ADDI $2, $2, 5')
+			);
+			const beqEntries = result.trace.filter((t) =>
+				t.instruction.raw.includes('BEQ $1, $2, second')
+			);
+			const addEntries = result.trace.filter((t) =>
+				t.instruction.raw.includes('ADD $3, $3, $4')
+			);
+
+			//validate ADDI $1 (executed once)
+			expect(addi1Entries.length).toBe(1);
+			const addi1 = addi1Entries[0];
+			expect(addi1.timeline[0].stage).toBe('F'); //cycle 1: fetch
+			expect(addi1.timeline[1].stage).toBe('D'); //cycle 2: decode
+			expect(addi1.timeline[2].stage).toBe('E'); //cycle 3: execute
+			expect(addi1.timeline[3].stage).toBe('M'); //cycle 4: memory
+			expect(addi1.timeline[4].stage).toBe('W'); //cycle 5: writeback
+
+			//validate first ADDI $2 (in loop, appears 3 times: 2 executed, 1 flushed)
+			expect(addi2Entries.length).toBe(3);
+			const addi2First = addi2Entries[0];
+			expect(addi2First.timeline[0].stage).toBe('bubble'); //cycle 1: not yet fetched
+			expect(addi2First.timeline[1].stage).toBe('F'); //cycle 2: fetch
+			expect(addi2First.timeline[2].stage).toBe('D'); //cycle 3: decode
+			expect(addi2First.timeline[3].stage).toBe('E'); //cycle 4: execute
+			expect(addi2First.timeline[4].stage).toBe('M'); //cycle 5: memory
+			expect(addi2First.timeline[5].stage).toBe('W'); //cycle 6: writeback
+
+			//validate first BEQ (appears 3 times: 2 executed, 1 flushed)
+			expect(beqEntries.length).toBe(3);
+			const beqFirst = beqEntries[0];
+			expect(beqFirst.timeline[1].stage).toBe('bubble'); //cycle 2: not yet fetched
+			expect(beqFirst.timeline[2].stage).toBe('F'); //cycle 3: fetch
+			expect(beqFirst.timeline[3].stage).toBe('D'); //cycle 4: decode
+			expect(beqFirst.timeline[4].stage).toBe('E'); //cycle 5: execute (branch resolves here)
+			expect(beqFirst.timeline[5].stage).toBe('M'); //cycle 6: memory
+			expect(beqFirst.timeline[6].stage).toBe('W'); //cycle 7: writeback
+
+			//validate first ADD (should be fetched but then flushed due to misprediction)
+			expect(addEntries.length).toBeGreaterThanOrEqual(1);
+			const addFirst = addEntries[0];
+			//this instruction was fetched when branch was predicted not-taken
+			const addFirstFetchCycle = addFirst.timeline.findIndex((t) => t.stage === 'F');
+			expect(addFirstFetchCycle).toBeGreaterThan(0);
+			//it should be flushed when the branch resolves as taken
+			const wasFlushed = addFirst.timeline.some((t) => t.flushed === true);
+			expect(wasFlushed).toBe(true);
+
+			//validate second ADDI $2 (loop iteration 2)
+			const addi2Second = addi2Entries[1];
+			//should be fetched after the flush
+			const addi2SecondFetchCycle = addi2Second.timeline.findIndex((t) => t.stage === 'F');
+			expect(addi2SecondFetchCycle).toBeGreaterThan(addFirstFetchCycle);
+			//should complete normally
+			expect(addi2Second.timeline.some((t) => t.stage === 'W')).toBe(true);
+
+			//verify that first ADDI $2's Writeback and second ADDI $2's Fetch overlap in the same cycle
+			//overlap visualization scenario
+			const addi2FirstWritebackCycle = addi2First.timeline.findIndex((t) => t.stage === 'W');
+			expect(addi2FirstWritebackCycle).toBe(5); // Cycle 6 (0-indexed)
+			expect(addi2SecondFetchCycle).toBe(5); // Cycle 6 (0-indexed) - SAME CYCLE!
+			expect(addi2FirstWritebackCycle).toBe(addi2SecondFetchCycle);
+			//should be in cycle 6 (index 5), confirming the overlap
+
+			//validate second BEQ (should now be predicted taken after first iteration)
+			const beqSecond = beqEntries[1];
+			const beqSecondFetchCycle = beqSecond.timeline.findIndex((t) => t.stage === 'F');
+			expect(beqSecondFetchCycle).toBeGreaterThan(0);
+			//this time, since predictor learned, it might predict correctly
+			//but since $2 is now 10 and $1 is still 5, branch is NOT taken this time
+			//so if predicted taken, it will be flushed
+			const beqSecondExecuteCycle = beqSecond.timeline.findIndex((t) => t.stage === 'E');
+			expect(beqSecondExecuteCycle).toBeGreaterThan(beqSecondFetchCycle);
+
+			//verify branch predictions
+			expect(result.predictions.length).toBe(2); //two branch executions
+			const firstPrediction = result.predictions[0];
+			expect(firstPrediction.predicted).toBe(false); //initially predicted not-taken
+			expect(firstPrediction.actual).toBe(true); //actually taken
+			expect(firstPrediction.correct).toBe(false); //misprediction
+
+			const secondPrediction = result.predictions[1];
+			expect(secondPrediction.predicted).toBe(true); //now predicted taken (1-bit learned)
+			expect(secondPrediction.actual).toBe(false); //actually not taken ($2=10, $1=5)
+			expect(secondPrediction.correct).toBe(false); //misprediction again
+
+			//verify total mispredictions
+			expect(result.mispredictions).toBe(2);
+
+			//verify that the pipeline eventually completes
+			expect(result.totalCycles).toBeGreaterThan(10);
+
+			//verify final register values
+			expect(result.finalRegisters['$1']).toBe(5); //set once
+			expect(result.finalRegisters['$2']).toBe(10); //0 + 5 + 5
 		});
 	});
 });
