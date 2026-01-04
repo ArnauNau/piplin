@@ -4,7 +4,7 @@
 	import PipelineGrid from '../components/PipelineGrid.svelte';
 	import StatusBar from '../components/StatusBar.svelte';
 	import DocumentationPanel from '../components/DocumentationPanel.svelte';
-	import type { CycleEntry, TraceEntry } from '$lib/types';
+	import type { CycleEntry, ExecutionInstance } from '$lib/types';
 	import { getAppState } from '$lib/stores.svelte';
 
 	const appState = getAppState();
@@ -13,7 +13,7 @@
 	let docsOpen = $state(true);
 
 	let selectedInstruction = $state<string | null>(null);
-	let selectedTraceEntry = $state<TraceEntry | null>(null);
+	let selectedTraceEntry = $state<ExecutionInstance | null>(null);
 	let selectedTraceIndex = $state<number>(-1);
 
 	let selectedStage = $state<{
@@ -22,7 +22,7 @@
 		entry: CycleEntry;
 	} | null>(null);
 
-	function handleInstructionSelect(entry: TraceEntry, index: number) {
+	function handleInstructionSelect(entry: ExecutionInstance, index: number) {
 		selectedInstruction = entry.instruction.opcode.toUpperCase();
 		selectedTraceEntry = entry;
 		selectedTraceIndex = index;
@@ -163,7 +163,7 @@
 						{selectedTraceEntry}
 						{selectedTraceIndex}
 						hazards={appState.result?.hazards ?? []}
-						trace={appState.result?.trace ?? []}
+						instanceMap={appState.result?.instanceMap ?? new Map()}
 					/>
 				</div>
 				<button

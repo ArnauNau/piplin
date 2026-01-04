@@ -118,7 +118,7 @@ export function createBranchPredictor(
 
 // Record a branch prediction result
 export function recordPrediction(
-	instrIndex: number,
+	execId: number,
 	predicted: boolean,
 	actual: boolean,
 	currentCycle: number,
@@ -128,7 +128,7 @@ export function recordPrediction(
 	const flushCycles = correct ? 0 : branchResolutionCycle - currentCycle;
 
 	return {
-		instructionIndex: instrIndex,
+		executionId: execId,
 		predicted,
 		actual,
 		correct,

@@ -9,7 +9,8 @@ import type {
 	Memory,
 	ForwardingInfo,
 	BranchPrediction,
-	TraceEntry
+	ExecutionInstance,
+	ExecutionId
 } from '../types';
 import { createDefaultRegisters } from '../types';
 import {
@@ -35,7 +36,7 @@ interface PipelineStage {
 
 //tracking for dynamic tracing
 interface ActiveStage {
-	traceIndex: number; //index in the trace array
+	executionId: ExecutionId; //unique ID for this execution instance
 	stage: PipelineStage;
 }
 
@@ -47,6 +48,7 @@ export function simulatePipeline(
 	if (instructions.length === 0) {
 		return {
 			trace: [],
+			instanceMap: new Map(),
 			totalCycles: 0,
 			hazards: [],
 			predictions: [],
@@ -64,9 +66,14 @@ export function simulatePipeline(
 	);
 
 	//dynamic execution trace
-	const trace: TraceEntry[] = [];
+	const trace: ExecutionInstance[] = [];
+	const instanceMap: Map<ExecutionId, ExecutionInstance> = new Map();
 	const hazards: HazardInfo[] = [];
 	const predictions: BranchPrediction[] = [];
+
+	//execution instance tracking
+	let nextExecutionId: ExecutionId = 0;
+	const iterationCounts: Map<number, number> = new Map(); // instrIndex -> iteration count
 
 	//current state
 	let pc = 0;
@@ -86,7 +93,7 @@ export function simulatePipeline(
 	//results available for forwarding (from EX and MEM stages); maps register name to value and source info
 	const forwardableResults: Map<
 		string,
-		{ value: number; fromInstr: number; fromStage: 'E' | 'M' }
+		{ value: number; fromExecution: ExecutionId; fromStage: 'E' | 'M' }
 	> = new Map();
 
 	//to prevent infinite loops (no static analysis for now)
@@ -95,15 +102,22 @@ export function simulatePipeline(
 	//initialize first instruction in Fetch
 	if (instructions.length > 0) {
 		const label = Array.from(labels.entries()).find(([_, idx]) => idx === 0)?.[0];
+		const execId = nextExecutionId++;
+		const iteration = 0;
+		iterationCounts.set(0, 1);
 
-		trace.push({
+		const instance: ExecutionInstance = {
+			executionId: execId,
 			instruction: instructions[0],
 			timeline: [],
-			label: label ? `${label}:` : undefined
-		});
+			label: label ? `${label}:` : undefined,
+			iteration
+		};
+		trace.push(instance);
+		instanceMap.set(execId, instance);
 
 		stages.F = {
-			traceIndex: 0,
+			executionId: execId,
 			stage: {
 				instr: instructions[0],
 				cycleInStage: 1,
@@ -142,7 +156,7 @@ export function simulatePipeline(
 		let memResult: number | undefined;
 
 		if (stages.M && !stages.M.stage.flushed) {
-			const { stage, traceIndex } = stages.M;
+			const { stage, executionId } = stages.M;
 			const { instr } = stage;
 
 			if (instr) {
@@ -153,7 +167,7 @@ export function simulatePipeline(
 						if (instr.rd && config.forwarding.memToEx) {
 							forwardableResults.set(instr.rd, {
 								value: memResult,
-								fromInstr: traceIndex,
+								fromExecution: executionId,
 								fromStage: 'M'
 							});
 						}
@@ -162,7 +176,7 @@ export function simulatePipeline(
 					} else if (instr.type === 'alu' && instr.rd && config.forwarding.memToEx) {
 						forwardableResults.set(instr.rd, {
 							value: stage.computedValue ?? 0,
-							fromInstr: traceIndex,
+							fromExecution: executionId,
 							fromStage: 'M'
 						});
 					}
@@ -171,7 +185,7 @@ export function simulatePipeline(
 					if (instr.type === 'alu' && instr.rd && config.forwarding.memToEx) {
 						forwardableResults.set(instr.rd, {
 							value: stage.computedValue ?? 0,
-							fromInstr: traceIndex,
+							fromExecution: executionId,
 							fromStage: 'M'
 						});
 					}
@@ -185,7 +199,7 @@ export function simulatePipeline(
 		let branchTarget = -1;
 
 		if (stages.E && !stages.E.stage.flushed) {
-			const { stage, traceIndex } = stages.E;
+			const { stage, executionId } = stages.E;
 			const { instr } = stage;
 
 			if (instr) {
@@ -201,7 +215,7 @@ export function simulatePipeline(
 						if (instr.rd && config.forwarding.exToEx) {
 							forwardableResults.set(instr.rd, {
 								value: exeResult,
-								fromInstr: traceIndex,
+								fromExecution: executionId,
 								fromStage: 'E'
 							});
 						}
@@ -215,7 +229,7 @@ export function simulatePipeline(
 						predictor.update(instr.index, branchTaken);
 
 						const prediction: BranchPrediction = {
-							instructionIndex: traceIndex,
+							executionId,
 							predicted,
 							actual: branchTaken,
 							correct: predicted === branchTaken,
@@ -257,7 +271,7 @@ export function simulatePipeline(
 		let hazardInfo: HazardInfo | undefined;
 
 		if (stages.D && !stages.D.stage.flushed) {
-			const { stage, traceIndex } = stages.D;
+			const { stage, executionId } = stages.D;
 			const { instr } = stage;
 
 			if (instr) {
@@ -267,9 +281,9 @@ export function simulatePipeline(
 					hazardInfo = {
 						type: 'structural',
 						cycle,
-						instructionIndex: traceIndex,
+						executionId,
 						description: 'Structural Hazard: Unit Busy',
-						dependsOn: stages.E.traceIndex,
+						dependsOnExecution: stages.E.executionId,
 						register: 'ALU'
 					};
 				}
@@ -290,9 +304,9 @@ export function simulatePipeline(
 							hazardInfo = {
 								type: 'structural',
 								cycle,
-								instructionIndex: traceIndex,
+								executionId,
 								description: `Wait for WB on ${source}`,
-								dependsOn: stages.W.traceIndex,
+								dependsOnExecution: stages.W.executionId,
 								register: source
 							};
 							break;
@@ -313,9 +327,9 @@ export function simulatePipeline(
 								hazardInfo = {
 									type: 'raw',
 									cycle,
-									instructionIndex: traceIndex,
+									executionId,
 									description: `Data (Load-use) hazard: ${source}`,
-									dependsOn: stages.E.traceIndex,
+									dependsOnExecution: stages.E.executionId,
 									register: source
 								};
 								break;
@@ -327,9 +341,9 @@ export function simulatePipeline(
 								hazardInfo = {
 									type: 'raw',
 									cycle,
-									instructionIndex: traceIndex,
+									executionId,
 									description: `Data (Read-After-Write) hazard: ${source}`,
-									dependsOn: stages.E.traceIndex,
+									dependsOnExecution: stages.E.executionId,
 									register: source
 								};
 								break;
@@ -350,9 +364,9 @@ export function simulatePipeline(
 								hazardInfo = {
 									type: 'raw',
 									cycle,
-									instructionIndex: traceIndex,
+									executionId,
 									description: `Data (Read-After-Write) hazard: ${source}`,
-									dependsOn: stages.M.traceIndex,
+									dependsOnExecution: stages.M.executionId,
 									register: source
 								};
 								break;
@@ -366,9 +380,9 @@ export function simulatePipeline(
 								hazardInfo = {
 									type: 'raw',
 									cycle,
-									instructionIndex: traceIndex,
+									executionId,
 									description: `Data (Read-After-Write) hazard: ${source}`,
-									dependsOn: stages.M.traceIndex,
+									dependsOnExecution: stages.M.executionId,
 									register: source
 								};
 								break;
@@ -386,15 +400,17 @@ export function simulatePipeline(
 		}
 
 		//#region UPDATE TIMELINE
-		const addCycleToTrace = (tIdx: number, entry: CycleEntry) => {
-			while (trace[tIdx].timeline.length < cycle - 1) {
-				trace[tIdx].timeline.push({ stage: 'bubble' });
+		const addCycleToTimeline = (execId: ExecutionId, entry: CycleEntry) => {
+			const instance = instanceMap.get(execId);
+			if (!instance) return;
+			while (instance.timeline.length < cycle - 1) {
+				instance.timeline.push({ stage: 'bubble' });
 			}
-			trace[tIdx].timeline[cycle - 1] = entry;
+			instance.timeline[cycle - 1] = entry;
 		};
 
 		if (decodeStalled && stages.D) {
-			addCycleToTrace(stages.D.traceIndex, { stage: 'stall', hazardType: 'raw' });
+			addCycleToTimeline(stages.D.executionId, { stage: 'stall', hazardType: 'raw' });
 		}
 
 		for (const sName of ['F', 'D', 'E', 'M', 'W'] as StageName[]) {
@@ -404,13 +420,13 @@ export function simulatePipeline(
 					// Already handled stall entry above
 				} else if (sName === 'F' && decodeStalled) {
 					// F stalled
-					addCycleToTrace(active.traceIndex, {
+					addCycleToTimeline(active.executionId, {
 						stage: 'stall',
 						hazardType: 'structural'
 					});
 				} else {
 					// Normal execution
-					addCycleToTrace(active.traceIndex, {
+					addCycleToTimeline(active.executionId, {
 						stage: sName,
 						flushed: active.stage.flushed,
 						cycleInStage:
@@ -447,7 +463,7 @@ export function simulatePipeline(
 		if (stages.M) {
 			if (stages.M.stage.cycleInStage >= stages.M.stage.totalCyclesInStage) {
 				stages.W = {
-					traceIndex: stages.M.traceIndex,
+					executionId: stages.M.executionId,
 					stage: {
 						...stages.M.stage,
 						cycleInStage: 1,
@@ -473,7 +489,7 @@ export function simulatePipeline(
 						: 1;
 
 				stages.M = {
-					traceIndex: stages.E.traceIndex,
+					executionId: stages.E.executionId,
 					stage: {
 						...stages.E.stage,
 						cycleInStage: 1,
@@ -503,7 +519,7 @@ export function simulatePipeline(
 							(fwd.fromStage === 'M' && config.forwarding.memToEx);
 						if (canForward) {
 							fwdUsed.push({
-								fromInstruction: fwd.fromInstr,
+								fromExecution: fwd.fromExecution,
 								fromStage: fwd.fromStage,
 								toStage: 'E',
 								register: src,
@@ -520,7 +536,7 @@ export function simulatePipeline(
 			}
 
 			stages.E = {
-				traceIndex: stages.D.traceIndex,
+				executionId: stages.D.executionId,
 				stage: {
 					...stages.D.stage,
 					cycleInStage: 1,
@@ -534,7 +550,7 @@ export function simulatePipeline(
 		// F -> D
 		if (!decodeStalled && stages.F && !stages.D) {
 			stages.D = {
-				traceIndex: stages.F.traceIndex,
+				executionId: stages.F.executionId,
 				stage: {
 					...stages.F.stage,
 					cycleInStage: 1,
@@ -548,22 +564,28 @@ export function simulatePipeline(
 		//fetch new instruction (if not stalled and PC valid)
 		if (!decodeStalled && !stages.F && pc < instructions.length) {
 			const label = Array.from(labels.entries()).find(([_, idx]) => idx === pc)?.[0];
+			const instrIndex = instructions[pc].index;
+			const iteration = iterationCounts.get(instrIndex) ?? 0;
+			iterationCounts.set(instrIndex, iteration + 1);
+			const execId = nextExecutionId++;
 
-			const newEntry: TraceEntry = {
+			const instance: ExecutionInstance = {
+				executionId: execId,
 				instruction: instructions[pc],
 				timeline: [],
-				label: label ? `${label}:` : undefined
+				label: label ? `${label}:` : undefined,
+				iteration
 			};
-			trace.push(newEntry);
-			const newTraceIndex = trace.length - 1;
+			trace.push(instance);
+			instanceMap.set(execId, instance);
 
-			//backfill stalls for missed cycles
-			while (trace[newTraceIndex].timeline.length < cycle) {
-				trace[newTraceIndex].timeline.push({ stage: 'bubble' });
+			//backfill bubbles for missed cycles
+			while (instance.timeline.length < cycle) {
+				instance.timeline.push({ stage: 'bubble' });
 			}
 
 			stages.F = {
-				traceIndex: newTraceIndex,
+				executionId: execId,
 				stage: {
 					instr: instructions[pc],
 					cycleInStage: 1,
@@ -601,6 +623,7 @@ export function simulatePipeline(
 
 	return {
 		trace,
+		instanceMap,
 		totalCycles,
 		hazards,
 		predictions,

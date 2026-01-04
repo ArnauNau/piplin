@@ -1,11 +1,12 @@
-import type { Instruction, ForwardingInfo, RegisterFile } from '../types';
+import type { Instruction, ForwardingInfo, RegisterFile, ExecutionId } from '../types';
 import { getSourceRegisters, getDestRegister } from './hazards';
 
-// Check if forwarding can resolve a hazard
-// Returns forwarding info if possible, null otherwise
+//check if forwarding can resolve a hazard
+//returns forwarding info if possible, null otherwise
 export function checkForwarding(
 	consumer: Instruction, // instruction needing value
 	producer: Instruction, // instruction producing value
+	producerExecutionId: ExecutionId,
 	producerStage: 'E' | 'M', // stage where producer's result is available
 	producerValue: number // the computed value
 ): ForwardingInfo | null {
@@ -16,7 +17,7 @@ export function checkForwarding(
 	if (!sources.includes(destReg)) return null;
 
 	return {
-		fromInstruction: producer.index,
+		fromExecution: producerExecutionId,
 		fromStage: producerStage,
 		toStage: 'E',
 		register: destReg,
@@ -24,8 +25,8 @@ export function checkForwarding(
 	};
 }
 
-// Apply forwarding to get effective register values for an instruction
-// Returns a modified register file with forwarded values
+//apply forwarding to get effective register values for an instruction
+//returns a modified register file with forwarded values
 export function applyForwarding(
 	regs: RegisterFile,
 	forwardingInfos: ForwardingInfo[]
@@ -41,17 +42,15 @@ export function applyForwarding(
 	return effectiveRegs;
 }
 
-// Forwarding paths in a typical 5-stage pipeline:
-//
 // EX→EX (EX/MEM to EX): Forward ALU result from previous instruction
-// - Available at end of EX stage
-// - Can be used by next instruction in its EX stage
-// - Resolves RAW hazard with 0 stall cycles for back-to-back ALU ops
+// - available at end of EX stage
+// - can be used by next instruction in its EX stage
+// - resolves RAW hazard with 0 stall cycles for back-to-back ALU ops
 //
 // MEM→EX (MEM/WB to EX): Forward memory result or ALU result
-// - Available at end of MEM stage
-// - Can be used by instruction 2 cycles later in its EX stage
-// - For loads: still requires 1 stall (load-use hazard)
+// - available at end of MEM stage
+// - can be used by instruction 2 cycles later in its EX stage
+// - for loads: still requires 1 stall (load-use hazard)
 
 export interface ForwardingPath {
 	name: string;
@@ -72,7 +71,6 @@ export const FORWARDING_PATHS: ForwardingPath[] = [
 	}
 ];
 
-// Determine which forwarding path is being used
 export function getForwardingPathName(info: ForwardingInfo): string {
 	if (info.fromStage === 'E') {
 		return 'EX→EX';

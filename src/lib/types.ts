@@ -2,6 +2,9 @@ export type StageName = 'F' | 'D' | 'E' | 'M' | 'W';
 
 export type InstructionType = 'alu' | 'load' | 'store' | 'branch' | 'nop';
 
+//unique identifier for each instruction execution (supports loops where same instruction runs multiple times)
+export type ExecutionId = number;
+
 export type AluOp = 'add' | 'sub' | 'mul' | 'and' | 'or' | 'xor' | 'slt';
 
 export type HazardType = 'structural' | 'raw' | 'control';
@@ -34,14 +37,14 @@ export interface CycleEntry {
 export interface HazardInfo {
 	type: HazardType;
 	cycle: number;
-	instructionIndex: number;
+	executionId: ExecutionId;
 	description: string;
-	dependsOn?: number; // index of instruction causing hazard
+	dependsOnExecution?: ExecutionId; // execution ID of instruction causing hazard
 	register?: string; // register involved in RAW hazard
 }
 
 export interface ForwardingInfo {
-	fromInstruction: number;
+	fromExecution: ExecutionId;
 	fromStage: 'E' | 'M';
 	toStage: 'E';
 	register: string;
@@ -49,7 +52,7 @@ export interface ForwardingInfo {
 }
 
 export interface BranchPrediction {
-	instructionIndex: number;
+	executionId: ExecutionId;
 	predicted: boolean; // true = taken, false = not taken
 	actual: boolean; // true = taken, false = not taken
 	correct: boolean;
@@ -74,11 +77,16 @@ export interface Memory {
 	entries(): IterableIterator<[number, number]>;
 }
 
-export interface TraceEntry {
+export interface ExecutionInstance {
+	executionId: ExecutionId;
 	instruction: Instruction;
 	timeline: CycleEntry[];
 	label?: string;
+	iteration: number; // which time this instruction was fetched (0-indexed)
 }
+
+//backward compatibility alias
+export type TraceEntry = ExecutionInstance;
 
 export interface Config {
 	latencies: {
@@ -128,7 +136,8 @@ export interface ParseError {
 }
 
 export interface SimulationResult {
-	trace: TraceEntry[];
+	trace: ExecutionInstance[];
+	instanceMap: Map<ExecutionId, ExecutionInstance>;
 	totalCycles: number;
 	hazards: HazardInfo[];
 	predictions: BranchPrediction[];
