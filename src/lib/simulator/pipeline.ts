@@ -464,12 +464,23 @@ export function simulatePipeline(
 
 		//#region ADVANCE PIPELINE
 		if (pendingFlush) {
-			if (stages.F) {
-				stages.F.stage.flushed = true;
-			}
-			if (stages.D) {
-				stages.D.stage.flushed = true;
-			}
+			(['F', 'D'] as const).forEach((sName) => {
+				const active = stages[sName];
+				if (active) {
+					active.stage.flushed = true;
+					//update timeline to show this stage as flushed in the NEXT cycle
+					const instance = instanceMap.get(active.executionId);
+					if (instance) {
+						//ensure timeline is filled up to current cycle (bubbles/stalls already added)
+						while (instance.timeline.length < cycle) {
+							instance.timeline.push({ stage: 'bubble' });
+						}
+						//write flush entry for NEXT cycle (index = cycle)
+						instance.timeline[cycle] = { stage: sName, flushed: true };
+					}
+					stages[sName] = null; //clear immediately
+				}
+			});
 		}
 
 		// W stage complete
@@ -577,8 +588,9 @@ export function simulatePipeline(
 			stages.F = null;
 		}
 
-		//fetch new instruction (if not stalled and PC valid)
-		if (!decodeStalled && !stages.F && pc < instructions.length) {
+		//fetch new instruction (if not stalled OR flushed, and PC valid)
+		//after a flush, decodeStalled no longer applies since the stalled instruction is gone
+		if ((!decodeStalled || pendingFlush) && !stages.F && pc < instructions.length) {
 			const label = Array.from(labels.entries()).find(([_, idx]) => idx === pc)?.[0];
 			const instrIndex = instructions[pc].index;
 			const iteration = iterationCounts.get(instrIndex) ?? 0;
