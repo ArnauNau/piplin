@@ -275,7 +275,7 @@ export function simulatePipeline(
 			const { instr } = stage;
 
 			if (instr) {
-				//check for structural hazard (EX busy in multi-cycle op?)
+				//check for structural hazard (EX busy in multi-cycle op OR EX blocked by MEM)
 				if (stages.E && stages.E.stage.cycleInStage < stages.E.stage.totalCyclesInStage) {
 					decodeStalled = true;
 					hazardInfo = {
@@ -285,6 +285,22 @@ export function simulatePipeline(
 						description: 'Structural Hazard: Unit Busy',
 						dependsOnExecution: stages.E.executionId,
 						register: 'ALU'
+					};
+				} else if (
+					stages.E &&
+					stages.E.stage.cycleInStage >= stages.E.stage.totalCyclesInStage &&
+					stages.M &&
+					stages.M.stage.cycleInStage < stages.M.stage.totalCyclesInStage
+				) {
+					//E is done but can't advance because M hasn't finished yet
+					decodeStalled = true;
+					hazardInfo = {
+						type: 'structural',
+						cycle,
+						executionId,
+						description: 'Structural Hazard: Pipeline Blocked',
+						dependsOnExecution: stages.M.executionId,
+						register: 'MEM'
 					};
 				}
 
